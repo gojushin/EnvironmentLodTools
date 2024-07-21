@@ -5,7 +5,7 @@ from .ds_consts import LOD_IDNAME, LOD_LABEL, LOD_PANEL_IDNAME, LOD_PANEL_LABEL
 bl_info = {
     "name": "LOD Generator",
     "author": "Nico Breycha",
-    "version": (0, 0, 1),
+    "version": (0, 0, 2),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Generates levels of detail (LODs) for selected mesh objects.",
@@ -167,7 +167,7 @@ class VIEW3D_PT_lod_generator(bpy.types.Panel):
         layout.operator(LOD_IDNAME)
 
 
-classes = (MESH_OT_GenerateLODs, VIEW3D_PT_lod_generator)
+classes = (MESH_OT_lod_generator, VIEW3D_PT_lod_generator)
 
 def register():
     from bpy.utils import register_class

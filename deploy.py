@@ -79,7 +79,8 @@ def zip_directory(directory):
 if __name__ == "__main__":
     user_defined_folder = input("Enter the folder name within the current directory: ")
     if not user_defined_folder:
-        user_defined_folder = [d for d in os.listdir() if os.path.isdir(d)][0]  # Get the first dir  in the current dir
+        # Get the first subdirectory in the current directory that is not a hidden directory
+        user_defined_folder = [d for d in os.listdir() if os.path.isdir(d) and not d.startswith('.')][0]
     if os.path.isdir(user_defined_folder):
         process_directory(user_defined_folder)
         zip_directory(user_defined_folder)
