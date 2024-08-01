@@ -21,13 +21,23 @@ A version that runs entirely headless is also planned.
 
 ### Installation
 
+## Plugin
 To install the plugins, follow these steps:
 
 1. Download the [latest release](https://github.com/gojushin/EnvironmentLodTool/releases/latest) from GitHub.
-2. Downloaded zip file.
-3. In Blender, go to `Edit` -> `Preferences` -> `Add-ons` and click on the `Install` button.
-4. Select the .zip file from the download folder.
-5. Enable the plugins by checking the plugins checkbox. *Note: This invokes pip to install xatlas to your local environment and can therefore cause Blender to hang for a second.*
+2. In Blender, go to `Edit` -> `Preferences` -> `Add-ons` and click on the `Install` button.
+3. Select the .zip file from the download folder.
+4. Enable the plugins by checking the plugins checkbox. *Note: This invokes pip to install xatlas to blenders environment and can therefore cause Blender to hang for a second.*
+
+## GUI
+EnvironmentLodTools can also be used with a "standalone" PySide6 based GUI.
+It exposes the exact same parameters, but uses the users local Python install, with Blender as a module, instead of Blenders Embedded Python.
+
+To use the GUI do the following:
+1. Download the entire `source code` from the [latest release](https://github.com/gojushin/EnvironmentLodTool/releases/latest).
+2. Open the command prompt.
+3. Run `pip install -r requirnments.txt` in the directory of the plugin.
+4. Start the GUI by executing `enviro_tools_gui.py`
 
 ### Usage
 
