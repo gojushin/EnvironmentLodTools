@@ -1,7 +1,6 @@
 import gc
 
 import numpy as np
-
 import bpy
 import bmesh
 from bmesh.utils import edge_split, face_split
@@ -15,7 +14,7 @@ Y_VEC = Vector((0, 1, 0))  # Vec into Y Direction
 bl_info = {
     "name": "Mesh Slicer",
     "author": "Nico Breycha",
-    "version": (0, 1, 0),
+    "version": (0, 1, 1),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Cut's a Mesh into a user-defined amount of square slices, "
@@ -253,14 +252,7 @@ def better_bisect(mesh, cut_pos, direction, middle_point=None):
     bm_pos = bmesh.new()
     bm_neg = bmesh.new()
 
-    # Fill the pos_mesh and neg_mesh with the respective vertices and faces
-    for vert in verts_pos:
-        bm_pos.verts.new(vert.co)
-
-    for vert in verts_neg:
-        bm_neg.verts.new(vert.co)
-
-    # Mapping of old vertex indices to new vertices in bm_pos and bm_neg
+    # Create and map old vertex indices to new vertices in bm_pos and bm_neg
     pos_map = {vert.index: bm_pos.verts.new(vert.co) for vert in verts_pos}
     neg_map = {vert.index: bm_neg.verts.new(vert.co) for vert in verts_neg}
 
@@ -306,6 +298,7 @@ class MESH_OT_quadrant_slicer(bpy.types.Operator):
 
     @staticmethod
     def remove_part(part):
+        """Removes the mesh part from the scene."""
         # Unlink the original mesh
         bpy.context.collection.objects.unlink(part)
 
@@ -334,6 +327,7 @@ class MESH_OT_quadrant_slicer(bpy.types.Operator):
         number_of_modules = context.scene.number_of_modules
 
         obj = context.object
+
         if obj is None or obj.type != 'MESH':
             self.report({'ERROR'}, "No mesh object is active.")
             return {'CANCELLED'}
@@ -351,7 +345,13 @@ class MESH_OT_quadrant_slicer(bpy.types.Operator):
             return {'CANCELLED'}
 
         x_sliced_meshes = []
+
+        for part in x_sliced_meshes:
+            print(f"Part: {part.name}")
         xy_sliced_meshes = []
+
+        for part in xy_sliced_meshes:
+            print(f"Part: {part.name}")
 
         next_part_to_cut = obj
 
@@ -391,7 +391,12 @@ class MESH_OT_quadrant_slicer(bpy.types.Operator):
                 next_part_to_cut = pos_part
 
         # Recalculate normals for the final mesh parts
-        for part in xy_sliced_meshes:
+        for i, part in enumerate(xy_sliced_meshes):
+            part.name = part.name.replace("_neg", "")
+            part.name = part.name.replace("_pos", "")
+            suffix = f"_{i + 1:03d}"
+            part.name = part.name + suffix
+
             self.recalculate_normals(part.data)
 
         self.report({'INFO'}, "Slicing completed")

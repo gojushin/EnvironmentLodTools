@@ -1,0 +1,66 @@
+/* General widget font and color setup */
+* {
+    font-family: "Segoe UI", sans-serif;
+    font-size: 12pt;
+    color: #2e2e2e;
+}
+
+/* Main Window styling */
+QWidget {
+    background-color: #f0f0f0;
+}
+
+/* GroupBox styling */
+QGroupBox {
+    border: 2px solid #a4c2a8;
+    border-radius: 5px;
+    margin-top: 1ex;
+    font-weight: bold;
+    font-size: 12pt;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    color: #2a5033;
+}
+
+/* Button styling */
+QPushButton {
+    background-color: #8db580;
+    color: white;
+    border-radius: 5px;
+    padding: 5px;
+}
+
+QPushButton:hover {
+    background-color: #7da476;
+}
+
+QPushButton:pressed {
+    background-color: #5d7a58;
+}
+
+/* Line Edit styling */
+QLineEdit {
+    padding: 5px;
+    background-color: #ffffff;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+}
+
+/* Spin Box and Double Spin Box styling */
+QSpinBox, QDoubleSpinBox {
+    padding: 5px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    background-color: #fff;
+}
+
+/* Combo Box styling */
+QComboBox {
+    padding: 5px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    background-color: #fff;
+}

@@ -1,14 +1,18 @@
 import os
+import copy
+
 import bpy
 
-from .ds_consts import CLEANUP_IDNAME, BAKE_IDNAME, UNWRAP_IDNAME, SLICE_IDNAME, COMB_IDNAME, LOD_IDNAME, COMB_LABEL, COMB_PANEL_LABEL, COMB_PANEL_IDNAME
+from .ds_consts import (CLEANUP_IDNAME, BAKE_IDNAME, UNWRAP_IDNAME, SLICE_IDNAME, COMB_IDNAME, LOD_IDNAME, COMB_LABEL,
+                        COMB_PANEL_LABEL, COMB_PANEL_IDNAME)
 from .ds_blender_baker_plug import PluginBakerSettings
+from .ds_utils import vertex_group_from_outer_boundary, clear_scene, decimate_object, launch_operator_by_name
 
 
 bl_info = {
     "name": "Automated LOD Generation Tool",
     "author": "Nico Breycha",
-    "version": (0, 0, 1),
+    "version": (0, 0, 2),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Combines the Operator from all the other plugins.",
@@ -16,80 +20,29 @@ bl_info = {
 }
 
 
-def _execute_operator(op_string):
-    def operation():
-        try:
-            # Split the operator string into its components
-            area, op = op_string.split(".")
-
-            # Dynamically access and call the operator from bpy.ops
-            getattr(getattr(bpy.ops, area), op)()
-            print(f"Operator {op_string} executed successfully.")
-        except AttributeError:
-            print(f"Error: Operator {op_string} does not exist.")
-        except RuntimeError as e:
-            print(f"Runtime Error: {e}")
-
-    return operation
-
-
-def _clear_initial_scene():
-    # Deselect all objects
-    bpy.ops.object.select_all(action='DESELECT')
-
-    # Select all objects and delete
-    bpy.ops.object.select_all(action='SELECT')
-    bpy.ops.object.delete()
-
-    # Remove all meshes, lamps, cameras and other data blocks still in memory and unused
-    for block in bpy.data.meshes:
-        bpy.data.meshes.remove(block)
-    for block in bpy.data.cameras:
-        bpy.data.cameras.remove(block)
-    for block in bpy.data.lights:
-        bpy.data.lights.remove(block)
-    for block in bpy.data.materials:
-        bpy.data.materials.remove(block)
-    for block in bpy.data.textures:
-        bpy.data.textures.remove(block)
-    for block in bpy.data.curves:
-        bpy.data.curves.remove(block)
-    for block in bpy.data.metaballs:
-        bpy.data.metaballs.remove(block)
-    for block in bpy.data.armatures:
-        bpy.data.armatures.remove(block)
-    for block in bpy.data.particles:
-        bpy.data.particles.remove(block)
-    for block in bpy.data.grease_pencils:
-        bpy.data.grease_pencils.remove(block)
-    for block in bpy.data.images:
-        bpy.data.images.remove(block)
-    for block in bpy.data.fonts:
-        bpy.data.fonts.remove(block)
-
-
-cleanup_op = _execute_operator(CLEANUP_IDNAME)
-slice_op = _execute_operator(SLICE_IDNAME)
-lod_op = _execute_operator(LOD_IDNAME)
-unwrap_op = _execute_operator(UNWRAP_IDNAME)
-bake_op = _execute_operator(BAKE_IDNAME)
-
-
 class OBJECT_OT_lod_pipeline(bpy.types.Operator):
     bl_idname = COMB_IDNAME
     bl_label = COMB_LABEL
 
     def execute(self, context):
-        _clear_initial_scene()
+        def _select_all_except_original():
+            """Select all objects except the original mesh."""
+            for _obj in bpy.data.objects:
+                if _obj != original_mesh:
+                    _obj.select_set(True)
+                else:
+                    _obj.select_set(False)
+
+        clear_scene()
 
         # IO
         import_fp_comb = context.scene.import_fp_comb
         export_fp_comb = context.scene.export_fp_comb
 
         # Cleanup Properties
-        poly_count_comb = context.scene.poly_count_comb
+        initial_reduction_comb = context.scene.initial_reduction_comb
+        loose_threshold_comb = context.scene.loose_threshold_comb
         boundary_length_comb = context.scene.boundary_length_comb
-        iterations_comb = context.scene.iterations_comb
         merge_threshold_comb = context.scene.merge_threshold_comb
 
         # Slice Properties
@@ -104,80 +57,141 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
 
         # Bake Properties
         baker_settings_comb: PluginBakerSettings = context.scene.baker_settings_comb
+        baker_settings_comb.save_path = export_fp_comb
 
-        blend_file_path = os.path.join(export_fp_comb, "bake_scene.blend")
+        # Save Operator Properties for later restore
 
-        bpy.ops.wm.save_as_mainfile(filepath=blend_file_path, check_existing=False, compress=True)
+        restore_dict = {
+            "initial_reduction": context.scene.initial_reduction,
+            "loose_threshold_comb": context.scene.loose_threshold,
+            "boundary_length": context.scene.boundary_length,
+            "merge_threshold": context.scene.merge_threshold,
+            "number_of_modules": context.scene.number_of_modules,
+            "lod_count": context.scene.lod_count,
+            "reduction_percentage": context.scene.reduction_percentage,
+            "baker_settings_comb": context.scene.baker_settings
+                         }
 
-        bpy.ops.object.select_all(action='DESELECT')
+        # Preserve the original values of the properties with shallow copy.
+        restore_dict = copy.copy(restore_dict)
+
+        # Override Operator Properties
+        context.scene.initial_reduction = initial_reduction_comb
+        context.scene.loose_threshold = loose_threshold_comb
+        context.scene.boundary_length = boundary_length_comb
+        context.scene.merge_threshold = merge_threshold_comb
+        context.scene.number_of_modules = num_of_modules_comb
+        context.scene.lod_count = lod_count_comb
+        context.scene.reduction_percentage = reduction_percentage_comb
+
+        # Highpoly name is changed later, as we modify it later in the script
+        context.scene.baker_settings.ray_distance = baker_settings_comb.ray_distance
+        context.scene.baker_settings.texture_resolution = baker_settings_comb.texture_resolution
+        context.scene.baker_settings.texture_margin = baker_settings_comb.texture_margin
+        context.scene.baker_settings.save_path = baker_settings_comb.save_path
+
         # Import Model
         bpy.ops.wm.obj_import(filepath=import_fp_comb)
 
         bpy.ops.object.select_all(action='DESELECT')
 
+        # If its multiple meshes, join them into one.
         for obj in bpy.data.objects:
             if obj.type == 'MESH':
                 obj.select_set(True)
-                bpy.context.view_layer.objects.active = obj  # Set one of the meshes as active
+                bpy.context.view_layer.objects.active = obj
 
-        # Join them into a single object
         bpy.ops.object.join()
 
+        # Rename the original mesh. We will use it later for baking.
         original_mesh = bpy.context.active_object
-        baker_settings_comb.highpoly_mesh_name = original_mesh.data.name
+        orig_name = original_mesh.name
+        original_mesh.name = "original_mesh"
+        original_mesh.data.name = "original_mesh"
+        context.scene.baker_settings.highpoly_mesh_name = original_mesh.name
 
-        # Duplicate the object
+        # Create a copy for the mesh we will work on.
         bpy.ops.object.duplicate()
-
         working_mesh = bpy.context.active_object
+        working_mesh.name = orig_name
+        working_mesh.data.name = orig_name
 
-        working_mesh.select_set(False)
-        original_mesh.select_set(False)
+        # Make sure only the working mesh is selected.
         bpy.ops.object.select_all(action='DESELECT')
-
         working_mesh.select_set(True)
         bpy.context.view_layer.objects.active = working_mesh
 
-        cleanup_op()
-        slice_op()
+        # Execute Operators
+        print("Starting Cleanup")
+        launch_operator_by_name(CLEANUP_IDNAME)
+
+        print("Starting Slicing")
+        launch_operator_by_name(SLICE_IDNAME)
+
+        # Ensure Target Polycount set by the user as intial polycount.
+        parts = []
 
         for obj in bpy.data.objects:
             if obj != original_mesh:
-                obj.select_set(True)
-            else:
-                obj.select_set(False)
+                parts.append(obj)
 
-        lod_op()
+        # Clamp part count to not exceed initial reduction count.
+        target_part_pc = initial_reduction_comb / num_of_modules_comb
 
-        for obj in bpy.data.objects:
-            if obj != original_mesh:
-                obj.select_set(True)
-            else:
-                obj.select_set(False)
+        for part in parts:
+            part_pc = len(part.data.polygons)
 
-        unwrap_op()
+            if part_pc > target_part_pc:
+                perc_red = (1 - target_part_pc / part_pc) * 100  # Mul with 100 to get percentage instead of decimal
+                vg = vertex_group_from_outer_boundary(part)
+                decimate_object(part, perc_red, iterations=1, vg_name=vg)
 
-        for obj in bpy.data.objects:
-            if obj != original_mesh:
-                obj.select_set(True)
-            else:
-                obj.select_set(False)
+        _select_all_except_original()
 
-        bake_op()
+        launch_operator_by_name(LOD_IDNAME)
 
+        _select_all_except_original()
+
+        launch_operator_by_name(UNWRAP_IDNAME)
+
+        # Save .blend File after Unwrap.
+        blend_file_path = os.path.join(export_fp_comb, "bake_scene.blend")
         bpy.ops.wm.save_as_mainfile(filepath=blend_file_path, check_existing=False, compress=True)
 
-        bpy.data.objects.remove(original_mesh)
+        _select_all_except_original()
 
-        for tex in bpy.data.textures:
-            if tex.users == 0:
-                bpy.data.textures.remove(tex)
+        launch_operator_by_name(BAKE_IDNAME)
 
+        # Export newly created objects.
         for obj in bpy.data.objects:
-            if obj.type == 'MESH':
+            if obj.type == 'MESH' and obj != original_mesh:
+                # Deselect all objects
+                bpy.ops.object.select_all(action='DESELECT')
+
+                # Select the object to export
                 obj.select_set(True)
+                bpy.context.view_layer.objects.active = obj
+
                 export_path = os.path.join(export_fp_comb, obj.name + '.obj')
-                bpy.ops.export_scene.obj(filepath=export_path, use_selection=True)
+                bpy.ops.wm.obj_export(filepath=export_path, export_selected_objects=True)
+
+        # Restore Operator Properties
+        context.scene.initial_reduction = restore_dict["initial_reduction"]
+        context.scene.loose_threshold = restore_dict["loose_threshold_comb"]
+        context.scene.boundary_length = restore_dict["boundary_length"]
+        context.scene.merge_threshold = restore_dict["merge_threshold"]
+        context.scene.number_of_modules = restore_dict["number_of_modules"]
+        context.scene.lod_count = restore_dict["lod_count"]
+        context.scene.reduction_percentage = restore_dict["reduction_percentage"]
+
+        context.scene.baker_settings.highpoly_mesh_name = restore_dict["baker_settings_comb"].highpoly_mesh_name
+        context.scene.baker_settings.ray_distance = restore_dict["baker_settings_comb"].ray_distance
+        context.scene.baker_settings.texture_resolution = restore_dict["baker_settings_comb"].texture_resolution
+        context.scene.baker_settings.texture_margin = restore_dict["baker_settings_comb"].texture_margin
+        context.scene.baker_settings.save_path = restore_dict["baker_settings_comb"].save_path
+
+        # Save .blend File
+        bpy.ops.wm.save_as_mainfile(filepath=blend_file_path, check_existing=False, compress=True)
 
         self.report({'INFO'}, "Export completed successfully.")
         return {'FINISHED'}
@@ -202,7 +216,8 @@ class VIEW3D_PT_lod_pipeline(bpy.types.Panel):
         # Create a box for Cleanup Properties and add labeled properties
         cleanup_box = layout.box()
         cleanup_box.label(text="Cleanup Properties")
-        cleanup_box.prop(scene, "poly_count_comb", text="Vertex Threshold")
+        cleanup_box.prop(scene, "initial_reduction_comb", text="First Reduction Target")
+        cleanup_box.prop(scene, "loose_threshold_comb", text="Loose Component Threshold.")
         cleanup_box.prop(scene, "boundary_length_comb", text="Boundary Length")
         cleanup_box.prop(scene, "iterations_comb", text="Iterations")
         cleanup_box.prop(scene, "merge_threshold_comb", text="Merge Threshold")
@@ -243,9 +258,9 @@ def register():
         register_class(cls)
 
     # Cleanup Properties
-    bpy.types.Scene.poly_count_comb = bpy.props.IntProperty(name="Loose Component Vertex Thr", default=1000)
+    bpy.types.Scene.initial_reduction_comb = bpy.props.IntProperty(name="Initial Reduction", default=1000000)
+    bpy.types.Scene.loose_threshold_comb = bpy.props.IntProperty(name="Loose Component Vertex Thr", default=1000)
     bpy.types.Scene.boundary_length_comb = bpy.props.IntProperty(name="Max Boundary Length", default=1000)
-    bpy.types.Scene.iterations_comb = bpy.props.IntProperty(name="Iterations", default=20)
     bpy.types.Scene.merge_threshold_comb = bpy.props.FloatProperty(name="Merge Threshold", default=0.000001)
 
     # Slice Properties
@@ -269,13 +284,14 @@ def register():
 def unregister():
     from bpy.utils import unregister_class
 
-    for cls in classes:
+    for cls in reversed(classes):
         unregister_class(cls)
 
+    # Cleanup Properties
+    del bpy.types.Scene.initial_reduction_comb
     del bpy.types.Scene.baker_settings_comb
-    del bpy.types.Scene.poly_count_comb
+    del bpy.types.Scene.loose_threshold_comb
     del bpy.types.Scene.boundary_length_comb
-    del bpy.types.Scene.iterations_comb
     del bpy.types.Scene.merge_threshold_comb
     del bpy.types.Scene.num_of_modules_comb
     del bpy.types.Scene.lod_count_comb

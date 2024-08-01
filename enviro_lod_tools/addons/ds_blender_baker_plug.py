@@ -1,19 +1,90 @@
-import bpy
 import os
+
+import bpy
 from bpy.props import StringProperty, IntProperty, FloatProperty, PointerProperty
-from bpy_extras.io_utils import ImportHelper
 
 from .ds_consts import BAKE_IDNAME, BAKE_LABEL, BAKE_PANEL_IDNAME, BAKE_PANEL_LABEL, BAKE_SETTINGS_IDNAME
+from .ds_utils import set_gpu_rendering
+
 
 bl_info = {
     "name": "Baker Plugin",
     "author": "Nico Breycha",
-    "version": (0, 0, 1),
+    "version": (0, 0, 2),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Bakes the base color of a defined mesh onto one or multiple selected meshes.",
     "category": "Object",
 }
+
+
+def bake(highpoly, lowpoly, settings):
+    """
+    Bakes the base color of a defined mesh onto one or multiple selected meshes.
+
+    :param highpoly: The highpoly mesh
+    :type highpoly: bpy.types.Object
+    :param lowpoly: The corresponding lowpoly mesh
+    :type lowpoly: bpy.types.Object
+    :param settings: The settings for the plugin
+    :type settings: PluginBakerSettings
+    :return:
+    """
+    # Enable both meshes required for baking.
+    highpoly.select_set(True)
+    lowpoly.select_set(True)
+    bpy.context.view_layer.objects.active = lowpoly
+
+    # Prepare material and image texture node for baking
+    lowpoly.data.materials.clear()
+
+    mat = bpy.data.materials.new(name=f"mat_{lowpoly.name}")
+    lowpoly.data.materials.append(mat)
+
+    if not mat.use_nodes:
+        mat.use_nodes = True
+
+    # Build Node Graph for baking
+    nodes = mat.node_tree.nodes
+    nodes.clear()
+
+    principled_node = nodes.new('ShaderNodeBsdfPrincipled')
+    principled_node.location = 200, 200
+
+    image_node = nodes.new('ShaderNodeTexImage')
+    image_node.location = 0, 200
+
+    # Create Material Output node
+    material_output = nodes.new('ShaderNodeOutputMaterial')
+    material_output.location = 400, 200
+
+    image_name = f"{lowpoly.name}_albedo"
+    image_path = os.path.join(settings.save_path, f"{image_name}.png")
+    image = bpy.data.images.new(image_name, width=settings.texture_resolution, height=settings.texture_resolution)
+    image_node.image = image
+
+    mat.node_tree.links.new(principled_node.inputs['Base Color'], image_node.outputs['Color'])
+    mat.node_tree.links.new(material_output.inputs['Surface'], principled_node.outputs['BSDF'])
+
+    # Set the image node we want to bake on.
+    nodes.active = image_node
+
+    # Perform the baking
+    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"},
+                        filepath=os.path.join(settings.save_path, f"{lowpoly.name}.png"),
+                        width=settings.texture_resolution, height=settings.texture_resolution,
+                        margin=settings.texture_margin, use_selected_to_active=True,
+                        cage_extrusion=settings.ray_distance, save_mode='EXTERNAL')
+
+    # Explicitly save the image
+    if image.is_dirty:
+        image.filepath_raw = image_path
+        image.file_format = 'PNG'
+        image.save()
+
+    # Deselect both meshes to ensure they are not baked in the next iteration
+    lowpoly.select_set(False)
+    highpoly.select_set(False)
 
 
 class PluginBakerSettings(bpy.types.PropertyGroup):
@@ -43,86 +114,35 @@ class OBJECT_OT_BakeBaseColor(bpy.types.Operator):
     def execute(self, context):
         settings = context.scene.baker_settings
         highpoly = bpy.data.objects.get(settings.highpoly_mesh_name)
+
         if not highpoly:
             self.report({'ERROR'}, "Highpoly mesh not found")
             return {'CANCELLED'}
 
+        # Store original renderer for later restore.
         original_renderer = bpy.context.scene.render.engine
-        bpy.context.scene.render.engine = 'CYCLES'
 
+        # Ensure we are using the most efficient available render engine
+        set_gpu_rendering()
+
+        # Determine Meshes to be baked and disable all initially.
         lowpolys = [obj for obj in bpy.context.selected_objects if obj.type == 'MESH' and obj != highpoly]
+        bpy.ops.object.select_all(action='DESELECT')
 
+        # Vars for tracking progress
+        lowpoly_cnt = len(lowpolys)
+        progress_cnt = 1
+
+        # Bake the Lowpoly Meshes one by one.
         for lowpoly in lowpolys:
-            self.bake(highpoly, lowpoly, settings)
+            print(f"Progress: {progress_cnt}/{lowpoly_cnt}")
+            bake(highpoly, lowpoly, settings)
+            progress_cnt += 1
 
+        # Restore original render engine
         bpy.context.scene.render.engine = original_renderer
         self.report({'INFO'}, "Baking completed")
         return {'FINISHED'}
-
-    def bake(self, highpoly, lowpoly, settings):
-        """
-        Bakes the base color of a defined mesh onto one or multiple selected meshes.
-
-        :param highpoly: The highpoly mesh
-        :type highpoly: bpy.types.Object
-        :param lowpoly: The corresponding lowpoly mesh
-        :type lowpoly: bpy.types.Object
-        :param settings: The settings for the plugin
-        :type settings: PluginBakerSettings
-        :return:
-        """
-        # Ensure the lowpoly object is the active object
-        bpy.context.view_layer.objects.active = lowpoly
-        highpoly.select_set(True)
-        lowpoly.select_set(True)
-
-        # Prepare material and image texture node for baking
-        lowpoly.data.materials.clear()
-
-        mat = bpy.data.materials.new(name=f"{lowpoly.name}_Material")
-        lowpoly.data.materials.append(mat)
-
-        if not mat.use_nodes:
-            mat.use_nodes = True
-
-        nodes = mat.node_tree.nodes
-        nodes.clear()  # Clear existing nodes to start fresh
-
-        principled_node = nodes.new('ShaderNodeBsdfPrincipled')
-        principled_node.location = 200, 200
-
-        image_node = nodes.new('ShaderNodeTexImage')
-        image_node.location = 0, 200
-
-        # Create Material Output node
-        material_output = nodes.new('ShaderNodeOutputMaterial')
-        material_output.location = 400, 200
-
-        image_name = f"{lowpoly.name}_Bake"
-        image_path = os.path.join(settings.save_path, f"{image_name}.png")
-        image = bpy.data.images.new(image_name, width=settings.texture_resolution, height=settings.texture_resolution)
-        image_node.image = image
-
-        mat.node_tree.links.new(principled_node.inputs['Base Color'], image_node.outputs['Color'])
-        mat.node_tree.links.new(material_output.inputs['Surface'], principled_node.outputs['BSDF'])
-
-        nodes.active = image_node
-
-        # Perform the baking
-        bpy.ops.object.bake(type='DIFFUSE', filepath=os.path.join(settings.save_path, f"{lowpoly.name}.png"),
-                            width=settings.texture_resolution, height=settings.texture_resolution,
-                            margin=settings.texture_margin, use_selected_to_active=True,
-                            cage_extrusion=settings.ray_distance, save_mode='EXTERNAL',
-                            cage_object=highpoly.name)
-
-        # Explicitly save the image
-        if image.is_dirty:
-            image.filepath_raw = image_path
-            image.file_format = 'PNG'
-            image.save()
-
-        lowpoly.select_set(False)
-        highpoly.select_set(False)
 
 
 class VIEW3D_PT_texture_transfer(bpy.types.Panel):
