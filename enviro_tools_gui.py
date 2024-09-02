@@ -77,6 +77,15 @@ class ModelProcessorGUI(QWidget):
         io_layout.addLayout(highpoly_layout)
         io_layout.addWidget(self.polycount_label)
 
+        # Rotate Highpoly Input
+        rotate_layout = QHBoxLayout()
+        self.rotate_label = QLabel("Rotate Highpoly Input:")
+        self.rotation_correction = QComboBox()
+        self.rotation_correction.addItems(["No Rotation", "-90 on X (Metashape)"])
+        rotate_layout.addWidget(self.rotate_label)
+        rotate_layout.addWidget(self.rotation_correction)
+        io_layout.addLayout(rotate_layout)
+
         # Horizontal Line as Separator
         h_line = QFrame()
         h_line.setFrameShape(QFrame.HLine)
@@ -363,6 +372,7 @@ class ModelProcessorGUI(QWidget):
 
         # Run the pipeline
         bpy.types.Scene.import_fp_comb = values["highpoly_model_path"]
+        bpy.types.Scene.rot_correction_comb = values["rot_correction"]
         bpy.types.Scene.export_fp_comb = values["export_path"]
 
         bpy.types.Scene.initial_reduction_comb = values["initial_reduction_polycount"]
@@ -392,6 +402,12 @@ class ModelProcessorGUI(QWidget):
             return
 
         highpoly_model_path = self.highpoly_model_line_edit.text()
+        rot_correction = self.rotation_correction.currentText()
+        if rot_correction == "No Rotation":
+            rot_correction = [0, 0, 0]
+        elif rot_correction == "-90 on X (Metashape)":
+            rot_correction = [-90, 0, 0]
+
         export_path = self.export_path_line_edit.text()
 
         if not os.path.isfile(highpoly_model_path):
@@ -423,7 +439,8 @@ class ModelProcessorGUI(QWidget):
             "num_lods": num_lods,
             "reduction_percentage": reduction_percentage,
             "texture_resolution": texture_resolution,
-            "ray_distance": ray_distance
+            "ray_distance": ray_distance,
+            "rot_correction": rot_correction
         }
 
         self.setup_blender(values)

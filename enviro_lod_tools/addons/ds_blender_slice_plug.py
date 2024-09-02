@@ -14,7 +14,7 @@ Y_VEC = Vector((0, 1, 0))  # Vec into Y Direction
 bl_info = {
     "name": "Mesh Slicer",
     "author": "Nico Breycha",
-    "version": (0, 1, 1),
+    "version": (0, 1, 2),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Cut's a Mesh into a user-defined amount of square slices, "
@@ -256,15 +256,32 @@ def better_bisect(mesh, cut_pos, direction, middle_point=None):
     pos_map = {vert.index: bm_pos.verts.new(vert.co) for vert in verts_pos}
     neg_map = {vert.index: bm_neg.verts.new(vert.co) for vert in verts_neg}
 
+    # Store original vertex normals
+    original_normals = {v.index: v.normal.copy() for v in bm.verts}
+
+    # Transfer Normals. NOTE: From here on we should not call "recalculate_normals" anymore!!
+    for old_index, new_vert in pos_map.items():
+        new_vert.normal = original_normals[old_index]
+
+    for old_index, new_vert in neg_map.items():
+        new_vert.normal = original_normals[old_index]
+
+    double_faces = 0
+
     # Recreate the faces in bm_pos and bm_neg
     for face in bm.faces:
-        pos_face_verts = [pos_map[v.index] for v in face.verts if v.index in pos_map]
-        neg_face_verts = [neg_map[v.index] for v in face.verts if v.index in neg_map]
+        pos_face_verts = [pos_map[vert.index] for vert in face.verts if vert.index in pos_map]
+        neg_face_verts = [neg_map[vert.index] for vert in face.verts if vert.index in neg_map]
 
-        if len(pos_face_verts) == len(face.verts):
-            bm_pos.faces.new(pos_face_verts)
-        elif len(neg_face_verts) == len(face.verts):
-            bm_neg.faces.new(neg_face_verts)
+        try:
+            if len(pos_face_verts) == len(face.verts):
+                bm_pos.faces.new(pos_face_verts)
+            elif len(neg_face_verts) == len(face.verts):
+                bm_neg.faces.new(neg_face_verts)
+        except ValueError as err:
+            print(f"Failed to create face {face.index}: {err}")
+            double_faces += 1
+            pass
 
     bm.free()
     del verts_pos
@@ -396,8 +413,6 @@ class MESH_OT_quadrant_slicer(bpy.types.Operator):
             part.name = part.name.replace("_pos", "")
             suffix = f"_{i + 1:03d}"
             part.name = part.name + suffix
-
-            self.recalculate_normals(part.data)
 
         self.report({'INFO'}, "Slicing completed")
         return {'FINISHED'}

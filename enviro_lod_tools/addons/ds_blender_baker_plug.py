@@ -10,7 +10,7 @@ from .ds_utils import set_gpu_rendering
 bl_info = {
     "name": "Baker Plugin",
     "author": "Nico Breycha",
-    "version": (0, 0, 2),
+    "version": (0, 0, 3),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Bakes the base color of a defined mesh onto one or multiple selected meshes.",
@@ -135,6 +135,10 @@ class OBJECT_OT_BakeBaseColor(bpy.types.Operator):
 
         # Bake the Lowpoly Meshes one by one.
         for lowpoly in lowpolys:
+            # Skip empty meshes
+            if len(lowpoly.data.polygons) == 0:
+                continue
+
             print(f"Progress: {progress_cnt}/{lowpoly_cnt}")
             bake(highpoly, lowpoly, settings)
             progress_cnt += 1

@@ -1,5 +1,6 @@
 import os
 import copy
+import math
 
 import bpy
 
@@ -12,7 +13,7 @@ from .ds_utils import vertex_group_from_outer_boundary, clear_scene, decimate_ob
 bl_info = {
     "name": "Automated LOD Generation Tool",
     "author": "Nico Breycha",
-    "version": (0, 0, 2),
+    "version": (0, 0, 3),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Combines the Operator from all the other plugins.",
@@ -39,6 +40,9 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
         import_fp_comb = context.scene.import_fp_comb
         export_fp_comb = context.scene.export_fp_comb
 
+        # Preprocessing
+        rot_correction_comb = context.scene.rot_correction_comb
+
         # Cleanup Properties
         initial_reduction_comb = context.scene.initial_reduction_comb
         loose_threshold_comb = context.scene.loose_threshold_comb
@@ -63,19 +67,19 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
 
         restore_dict = {
             "initial_reduction": context.scene.initial_reduction,
-            "loose_threshold_comb": context.scene.loose_threshold,
+            "loose_threshold": context.scene.loose_threshold,
             "boundary_length": context.scene.boundary_length,
             "merge_threshold": context.scene.merge_threshold,
             "number_of_modules": context.scene.number_of_modules,
             "lod_count": context.scene.lod_count,
             "reduction_percentage": context.scene.reduction_percentage,
-            "baker_settings_comb": context.scene.baker_settings
+            "baker_settings": context.scene.baker_settings
                          }
 
         # Preserve the original values of the properties with shallow copy.
         restore_dict = copy.copy(restore_dict)
 
-        # Override Operator Properties
+        # Override Operator Properties for non-comb components
         context.scene.initial_reduction = initial_reduction_comb
         context.scene.loose_threshold = loose_threshold_comb
         context.scene.boundary_length = boundary_length_comb
@@ -102,6 +106,20 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
                 bpy.context.view_layer.objects.active = obj
 
         bpy.ops.object.join()
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+        # Apply rotation correction if needed
+        obj = bpy.context.active_object
+
+        if rot_correction_comb[0] != 0:
+            obj.rotation_euler[0] = math.radians(rot_correction_comb[0])
+        if rot_correction_comb[1] != 0:
+            obj.rotation_euler[1] = math.radians(rot_correction_comb[1])
+        if rot_correction_comb[2] != 0:
+            obj.rotation_euler[2] = math.radians(rot_correction_comb[2])
+
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
 
         # Rename the original mesh. We will use it later for baking.
         original_mesh = bpy.context.active_object
@@ -127,6 +145,7 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
 
         print("Starting Slicing")
         launch_operator_by_name(SLICE_IDNAME)
+
 
         # Ensure Target Polycount set by the user as intial polycount.
         parts = []
@@ -177,18 +196,18 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
 
         # Restore Operator Properties
         context.scene.initial_reduction = restore_dict["initial_reduction"]
-        context.scene.loose_threshold = restore_dict["loose_threshold_comb"]
+        context.scene.loose_threshold = restore_dict["loose_threshold"]
         context.scene.boundary_length = restore_dict["boundary_length"]
         context.scene.merge_threshold = restore_dict["merge_threshold"]
         context.scene.number_of_modules = restore_dict["number_of_modules"]
         context.scene.lod_count = restore_dict["lod_count"]
         context.scene.reduction_percentage = restore_dict["reduction_percentage"]
 
-        context.scene.baker_settings.highpoly_mesh_name = restore_dict["baker_settings_comb"].highpoly_mesh_name
-        context.scene.baker_settings.ray_distance = restore_dict["baker_settings_comb"].ray_distance
-        context.scene.baker_settings.texture_resolution = restore_dict["baker_settings_comb"].texture_resolution
-        context.scene.baker_settings.texture_margin = restore_dict["baker_settings_comb"].texture_margin
-        context.scene.baker_settings.save_path = restore_dict["baker_settings_comb"].save_path
+        context.scene.baker_settings.highpoly_mesh_name = restore_dict["baker_settings"].highpoly_mesh_name
+        context.scene.baker_settings.ray_distance = restore_dict["baker_settings"].ray_distance
+        context.scene.baker_settings.texture_resolution = restore_dict["baker_settings"].texture_resolution
+        context.scene.baker_settings.texture_margin = restore_dict["baker_settings"].texture_margin
+        context.scene.baker_settings.save_path = restore_dict["baker_settings"].save_path
 
         # Save .blend File
         bpy.ops.wm.save_as_mainfile(filepath=blend_file_path, check_existing=False, compress=True)
@@ -211,6 +230,7 @@ class VIEW3D_PT_lod_pipeline(bpy.types.Panel):
 
         io_box = layout.box()
         io_box.prop(scene, "import_fp_comb", text="Import Filepath")
+        io_box.prop(scene, "rot_correction_comb", text="Rotation Correction")
         io_box.prop(scene, "export_fp_comb", text="Export Filepath")
 
         # Create a box for Cleanup Properties and add labeled properties
@@ -257,6 +277,10 @@ def register():
     for cls in classes:
         register_class(cls)
 
+    # Preprocessing Properties
+    bpy.types.Scene.rot_correction_comb = bpy.props.FloatVectorProperty(name="Initial Rotation Correction",
+                                                                        default=(0.0, 0.0, 0.0), subtype="EULER")
+
     # Cleanup Properties
     bpy.types.Scene.initial_reduction_comb = bpy.props.IntProperty(name="Initial Reduction", default=1000000)
     bpy.types.Scene.loose_threshold_comb = bpy.props.IntProperty(name="Loose Component Vertex Thr", default=1000)
@@ -288,6 +312,7 @@ def unregister():
         unregister_class(cls)
 
     # Cleanup Properties
+    del bpy.types.Scene.rot_correction_comb
     del bpy.types.Scene.initial_reduction_comb
     del bpy.types.Scene.baker_settings_comb
     del bpy.types.Scene.loose_threshold_comb

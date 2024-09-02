@@ -6,7 +6,7 @@ from .ds_utils import vertex_group_from_outer_boundary, decimate_object
 bl_info = {
     "name": "LOD Generator",
     "author": "Nico Breycha",
-    "version": (0, 0, 3),
+    "version": (0, 0, 4),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Generates levels of detail (LODs) for selected mesh objects.",
@@ -45,6 +45,11 @@ class LODGenerator:
 
         for obj in context.selected_objects:
             if obj.type == 'MESH':
+                # Skip objects with no polygons
+                if len(obj.data.polygons) == 0:
+                    continue
+
+                # Create LODs for the object
                 self._create_lods_for_object(obj, context)
 
     def _create_lods_for_object(self, obj, context):

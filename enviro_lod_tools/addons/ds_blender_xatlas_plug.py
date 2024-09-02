@@ -14,7 +14,7 @@ ENV_IS_BLENDER = bpy.app.binary_path != ""
 bl_info = {
     "name": "XAtlas Unwrapper",
     "author": "Nico Breycha",
-    "version": (0, 0, 1),
+    "version": (0, 0, 2),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Unwraps the model using xatals.",
@@ -77,8 +77,14 @@ class MESH_OT_unwrap_xatlas(bpy.types.Operator):
                 cnt_fail += 1
                 continue
 
-            # Get mesh data from the object
             mesh = obj.data
+
+            # Skip valid meshes with 0 polygons
+            if len(mesh.polygons) == 0:
+                self.report({'INFO'}, f"Skipping {obj.name}: empty mesh")
+                continue
+
+            # Get mesh data from the object
             cnt_succ += 1
 
             # Create a bmesh object and load the mesh data into it
