@@ -6,7 +6,7 @@ from .ds_utils import vertex_group_from_outer_boundary, decimate_object
 bl_info = {
     "name": "LOD Generator",
     "author": "Nico Breycha",
-    "version": (0, 0, 4),
+    "version": (0, 0, 5),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Generates levels of detail (LODs) for selected mesh objects.",
@@ -126,6 +126,11 @@ class MESH_OT_lod_generator(bpy.types.Operator):
         :rtype: set
         """
         lod_count = context.scene.lod_count
+
+        if lod_count == 0:
+            self.report({'INFO'}, "No LODs to generate.")
+            return {'FINISHED'}
+
         reduction_percentage = context.scene.reduction_percentage
         lod_generator = LODGenerator(lod_count, reduction_percentage)
         lod_generator.generate_lods(context)

@@ -14,24 +14,74 @@ def launch_operator_by_name(op_str):
 
 def vertex_group_from_outer_boundary(obj):
     """
-    Creates a vertex group from non-manifold edges to ensure they are preserved in decimation.
+    Creates a vertex group from the outer boundary to ensure it is preserved during decimation.
+    This function selects only the outer boundary, excluding any holes or inner boundaries.
     :param obj: The object to process.
     :type obj: bpy.types.Object
     :returns: Name of the vertex group.
     :rtype: str
     """
-    bpy.context.view_layer.objects.active = obj
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.select_all(action='DESELECT')
-    bpy.ops.mesh.select_non_manifold(extend=False, use_wire=False, use_boundary=True)
+    import bmesh
 
-    bpy.ops.object.mode_set(mode='OBJECT')
-    # Create a vertex group
-    vg = obj.vertex_groups.new(name="PreserveEdges")
-    vg.add([v.index for v in obj.data.vertices if v.select], 1.0, 'ADD')
+    # Ensure the object is active
+    bpy.context.view_layer.objects.active = obj
+
+    # Switch to EDIT mode and create a BMesh representation
     bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(obj.data)
+    bm.edges.ensure_lookup_table()
+
+    # Deselect all edges
+    for edge in bm.edges:
+        edge.select = False
+
+    # Select boundary edges (edges with only one linked face)
+    boundary_edges = [edge for edge in bm.edges if len(edge.link_faces) == 1]
+    for edge in boundary_edges:
+        edge.select = True
+
+    # Build edge loops from the boundary edges
+    unvisited_edges = set(boundary_edges)
+    edge_loops = []
+
+    while unvisited_edges:
+        current_loop = set()
+        edges_to_visit = {unvisited_edges.pop()}
+
+        while edges_to_visit:
+            edge = edges_to_visit.pop()
+            current_loop.add(edge)
+            for vert in edge.verts:
+                connected_edges = set(e for e in vert.link_edges if e in unvisited_edges)
+                edges_to_visit.update(connected_edges)
+                unvisited_edges.difference_update(connected_edges)
+
+        edge_loops.append(current_loop)
+
+    # Calculate the perimeter of each edge loop
+    loop_perimeters = []
+    for loop in edge_loops:
+        perimeter = sum(edge.calc_length() for edge in loop)
+        loop_perimeters.append(perimeter)
+
+    # Identify the edge loop with the largest perimeter (outer boundary)
+    max_perimeter_index = loop_perimeters.index(max(loop_perimeters))
+    outer_loop_edges = edge_loops[max_perimeter_index]
+
+    # Collect vertices from the outer loop
+    outer_loop_vertices = {vert.index for edge in outer_loop_edges for vert in edge.verts}
+
+    # Create a vertex group and add the outer loop vertices
+    bpy.ops.object.mode_set(mode='OBJECT')
+    vg = obj.vertex_groups.new(name="PreserveEdges")
+    vg.add(list(outer_loop_vertices), 1.0, 'ADD')
+
+    # Deselect everything and update the mesh
+    bpy.ops.object.mode_set(mode='EDIT')
+    bmesh.update_edit_mesh(obj.data)
     bpy.ops.mesh.select_all(action='DESELECT')
     bpy.ops.object.mode_set(mode='OBJECT')
+
     return vg.name
 
 

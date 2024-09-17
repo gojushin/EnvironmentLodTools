@@ -13,7 +13,7 @@ from .ds_utils import vertex_group_from_outer_boundary, clear_scene, decimate_ob
 bl_info = {
     "name": "Automated LOD Generation Tool",
     "author": "Nico Breycha",
-    "version": (0, 0, 3),
+    "version": (0, 0, 4),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Combines the Operator from all the other plugins.",
@@ -26,13 +26,48 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
     bl_label = COMB_LABEL
 
     def execute(self, context):
-        def _select_all_except_original():
-            """Select all objects except the original mesh."""
-            for _obj in bpy.data.objects:
-                if _obj != original_mesh:
+        def import_and_prepare_original_mesh(filepath, rotation_correction, keep_original_name = False):
+            # Get list of existing objects before import
+            existing_objects = set(bpy.data.objects)
+
+            # Import the model
+            bpy.ops.wm.obj_import(filepath=filepath)
+
+            # Get the list of new objects
+            imported_objects = [_obj for _obj in bpy.data.objects if _obj not in existing_objects]
+
+            # Deselect all
+            bpy.ops.object.select_all(action='DESELECT')
+
+            # If it's multiple meshes, join them into one.
+            for _obj in imported_objects:
+                if _obj.type == 'MESH':
                     _obj.select_set(True)
-                else:
-                    _obj.select_set(False)
+                    bpy.context.view_layer.objects.active = _obj
+
+            bpy.ops.object.join()
+            bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+            # Apply rotation correction if needed
+            _obj = bpy.context.active_object
+
+            if rotation_correction[0] != 0:
+                _obj.rotation_euler[0] = math.radians(rotation_correction[0])
+            if rotation_correction[1] != 0:
+                _obj.rotation_euler[1] = math.radians(rotation_correction[1])
+            if rotation_correction[2] != 0:
+                _obj.rotation_euler[2] = math.radians(rotation_correction[2])
+
+            bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+            # Rename the original mesh
+            imported_mesh = bpy.context.active_object
+
+            if not keep_original_name:
+                imported_mesh.name = "original_mesh"
+                imported_mesh.data.name = "original_mesh"
+
+            return imported_mesh
 
         clear_scene()
 
@@ -94,45 +129,7 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
         context.scene.baker_settings.texture_margin = baker_settings_comb.texture_margin
         context.scene.baker_settings.save_path = baker_settings_comb.save_path
 
-        # Import Model
-        bpy.ops.wm.obj_import(filepath=import_fp_comb)
-
-        bpy.ops.object.select_all(action='DESELECT')
-
-        # If its multiple meshes, join them into one.
-        for obj in bpy.data.objects:
-            if obj.type == 'MESH':
-                obj.select_set(True)
-                bpy.context.view_layer.objects.active = obj
-
-        bpy.ops.object.join()
-        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-
-        # Apply rotation correction if needed
-        obj = bpy.context.active_object
-
-        if rot_correction_comb[0] != 0:
-            obj.rotation_euler[0] = math.radians(rot_correction_comb[0])
-        if rot_correction_comb[1] != 0:
-            obj.rotation_euler[1] = math.radians(rot_correction_comb[1])
-        if rot_correction_comb[2] != 0:
-            obj.rotation_euler[2] = math.radians(rot_correction_comb[2])
-
-        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-
-
-        # Rename the original mesh. We will use it later for baking.
-        original_mesh = bpy.context.active_object
-        orig_name = original_mesh.name
-        original_mesh.name = "original_mesh"
-        original_mesh.data.name = "original_mesh"
-        context.scene.baker_settings.highpoly_mesh_name = original_mesh.name
-
-        # Create a copy for the mesh we will work on.
-        bpy.ops.object.duplicate()
-        working_mesh = bpy.context.active_object
-        working_mesh.name = orig_name
-        working_mesh.data.name = orig_name
+        working_mesh = import_and_prepare_original_mesh(import_fp_comb, rot_correction_comb, keep_original_name=True)
 
         # Make sure only the working mesh is selected.
         bpy.ops.object.select_all(action='DESELECT')
@@ -140,19 +137,16 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
         bpy.context.view_layer.objects.active = working_mesh
 
         # Execute Operators
-        print("Starting Cleanup")
         launch_operator_by_name(CLEANUP_IDNAME)
 
-        print("Starting Slicing")
         launch_operator_by_name(SLICE_IDNAME)
 
-
         # Ensure Target Polycount set by the user as intial polycount.
-        parts = []
+        parts = set()
 
         for obj in bpy.data.objects:
-            if obj != original_mesh:
-                parts.append(obj)
+            if obj.type == "MESH":
+                parts.add(obj)
 
         # Clamp part count to not exceed initial reduction count.
         target_part_pc = initial_reduction_comb / num_of_modules_comb
@@ -165,34 +159,42 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
                 vg = vertex_group_from_outer_boundary(part)
                 decimate_object(part, perc_red, iterations=1, vg_name=vg)
 
-        _select_all_except_original()
+        for part in parts:
+            part.select_set(True)
 
         launch_operator_by_name(LOD_IDNAME)
 
-        _select_all_except_original()
+        objects_to_bake = {obj for obj in bpy.data.objects if obj.type == "MESH"}
+
+        for obj in objects_to_bake:
+            obj.select_set(True)
 
         launch_operator_by_name(UNWRAP_IDNAME)
 
-        # Save .blend File after Unwrap.
-        blend_file_path = os.path.join(export_fp_comb, "bake_scene.blend")
-        bpy.ops.wm.save_as_mainfile(filepath=blend_file_path, check_existing=False, compress=True)
+        original_mesh = import_and_prepare_original_mesh(import_fp_comb, rot_correction_comb, keep_original_name=False)
+        context.scene.baker_settings.highpoly_mesh_name = original_mesh.name
 
-        _select_all_except_original()
+        for obj in objects_to_bake:
+            obj.vertex_groups.clear() # Clear a little non-relevant data along the way.
+            obj.select_set(True)
 
         launch_operator_by_name(BAKE_IDNAME)
 
+        # Remove the original mesh from the scene before export.
+        original_mesh.select_set(True)
+        bpy.ops.object.delete()
+
         # Export newly created objects.
-        for obj in bpy.data.objects:
-            if obj.type == 'MESH' and obj != original_mesh:
-                # Deselect all objects
-                bpy.ops.object.select_all(action='DESELECT')
+        for obj in objects_to_bake:
+            # Deselect all objects
+            bpy.ops.object.select_all(action='DESELECT')
 
-                # Select the object to export
-                obj.select_set(True)
-                bpy.context.view_layer.objects.active = obj
+            # Select the object to export
+            obj.select_set(True)
+            bpy.context.view_layer.objects.active = obj
 
-                export_path = os.path.join(export_fp_comb, obj.name + '.obj')
-                bpy.ops.wm.obj_export(filepath=export_path, export_selected_objects=True)
+            export_path = os.path.join(export_fp_comb, obj.name + '.obj')
+            bpy.ops.wm.obj_export(filepath=export_path, export_selected_objects=True)
 
         # Restore Operator Properties
         context.scene.initial_reduction = restore_dict["initial_reduction"]
@@ -209,7 +211,7 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
         context.scene.baker_settings.texture_margin = restore_dict["baker_settings"].texture_margin
         context.scene.baker_settings.save_path = restore_dict["baker_settings"].save_path
 
-        # Save .blend File
+        blend_file_path = os.path.join(export_fp_comb, "cleaned_scene.blend")
         bpy.ops.wm.save_as_mainfile(filepath=blend_file_path, check_existing=False, compress=True)
 
         self.report({'INFO'}, "Export completed successfully.")
