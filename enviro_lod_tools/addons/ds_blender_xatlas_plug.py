@@ -37,7 +37,7 @@ ENV_IS_BLENDER = bpy.app.binary_path != ""
 bl_info = {
     "name": "XAtlas Unwrapper",
     "author": "Nico Breycha",
-    "version": (0, 0, 3),
+    "version": (0, 0, 4),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Unwraps the model using xatals.",
@@ -76,6 +76,18 @@ def uninstall_xatlas_package():
         subprocess.check_call(["pip", "uninstall", "-y", "xatlas"])
 
 
+def _process_mesh_single_process(data):
+    obj_name, vertices, faces = data
+    try:
+        import xatlas
+        # Parametrize the mesh using xatlas
+        vmapping, indices, uvs = xatlas.parametrize(vertices, faces)
+        return obj_name, vmapping, indices, uvs, None
+    except Exception as e:
+        # Return the exception message to the main process
+        return obj_name, None, None, None, str(e)
+
+
 def _process_mesh_multiprocessing(data):
     obj_name, vertices, faces = data
     try:
@@ -83,7 +95,7 @@ def _process_mesh_multiprocessing(data):
         original_sys_path = sys.path.copy()
 
         # Remove Blender-specific paths
-        sys.path = [p for p in sys.path if 'blender' not in p.lower() and 'scripts' not in p.lower()]
+        sys.path = [p for p in sys.path if "blender" not in p.lower() and "scripts" not in p.lower()]
 
         import xatlas  # Import xatlas in the subprocess
 
@@ -164,7 +176,7 @@ class MESH_OT_unwrap_xatlas(bpy.types.Operator):
 
         try:
             # Restore sys.path to original before starting multiprocessing
-            sys.path = [p for p in original_sys_path if 'blender' not in p.lower() and 'scripts' not in p.lower()]
+            sys.path = [p for p in original_sys_path if "blender" not in p.lower() and "scripts" not in p.lower()]
 
             # Use multiprocessing Pool
             multiprocessing.freeze_support()
@@ -178,6 +190,12 @@ class MESH_OT_unwrap_xatlas(bpy.types.Operator):
                     results.append(result)
                     progress += 1
                     context.window_manager.progress_update(progress)
+        except ImportError as e:
+            # Multiprocessing not available (This is our fallback for using as plugin)
+            self.report({"INFO"}, f"Multiprocessing not available: {e}")
+            results = []
+            for data in mesh_data_list:
+                results.append(_process_mesh_single_process(data))
         except Exception as e:
             self.report({"ERROR"}, f"Multiprocessing failed: {e}")
             context.window_manager.progress_end()
