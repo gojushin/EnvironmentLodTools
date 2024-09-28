@@ -1,12 +1,17 @@
+import ensurepip
+
 import bpy
 
-from .ds_consts import CLEANUP_IDNAME, CLEANUP_LABEL, CLEANUP_PANEL_LABEL, CLEANUP_PANEL_IDNAME
-from .ds_utils import vertex_group_from_outer_boundary, decimate_object
+from .ds_consts import CLEANUP_IDNAME, CLEANUP_LABEL, CLEANUP_PANEL_LABEL, CLEANUP_PANEL_IDNAME, PYFQMR_MODULE_NAME
+from .ds_utils import (decimate_with_pyqmfr, keep_largest_component, clean_mesh_geometry,
+                       ensure_package_installed, uninstall_package, resolve_bmesh)
+
+ENV_IS_BLENDER = bpy.app.binary_path != ""
 
 bl_info = {
     "name": "Cleanup Tool",
     "author": "Nico Breycha",
-    "version": (0, 0, 2),
+    "version": (0, 0, 3),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "A quick pass on cleaning the meshes geometry",
@@ -18,7 +23,7 @@ class MESH_OT_clean_mesh(bpy.types.Operator):
     """Operator to clean selected mesh based on specified criteria."""
     bl_idname = CLEANUP_IDNAME
     bl_label = CLEANUP_LABEL
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
         # Gather Variables
@@ -27,99 +32,60 @@ class MESH_OT_clean_mesh(bpy.types.Operator):
         boundary_length = context.scene.boundary_length
         merge_threshold = context.scene.merge_threshold
 
-        # Ensure we're in object mode
+        # Ensure we're dealing with a mesh
         obj = context.active_object
-        if obj.mode == 'EDIT':
-            bpy.ops.object.mode_set(mode='OBJECT')
-
         orig_name = obj.name
 
-        # Determine initial reduction
-        start_vert_cnt = len(obj.data.vertices)
-        start_tri_cnt = len(obj.data.polygons)
+        if obj.type != "MESH":
+            self.report({"ERROR"}, f"Active object {orig_name} is not a mesh")
+            return {"CANCELLED"}
 
+        bm = keep_largest_component(obj, return_bm=True) # TODO add loose threshold
+        bm = clean_mesh_geometry(obj, merge_threshold, bm=bm, return_bm=True)
+
+        # Determine initial reduction
+        start_vert_cnt = len(bm.verts)
+        start_tri_cnt = len(bm.faces)
+
+        print("Starting iterative mesh reduction...")
         # Set iteration count in relation to reduction percentage
         if start_tri_cnt > initial_reduction:
-            perc_red = start_tri_cnt / initial_reduction
-
-            iterations = 1
-
-            if perc_red > 0.8:
-                iterations = 25
-            elif perc_red > 0.6:
-                iterations = 15
-            elif perc_red > 0.4:
-                iterations = 10
-            elif perc_red > 0.2:
-                iterations = 5
-
-            # Set Vertex Group for Border Retention
-            vg_name = vertex_group_from_outer_boundary(obj)
-
             # Do the Reduction
-            decimate_object(obj, perc_red, iterations=iterations, vg_name=vg_name)
+            try:
+                bm = decimate_with_pyqmfr(obj, initial_reduction, bm=bm, max_iterations=100, preserve_border=True,
+                                          merge_threshold=merge_threshold, return_bm=True)
+            except ImportError as e:
+                print("Could not import PyQmfr: ", e)
+                print("Fallback to Collapse via iter. Decimate Operator: ")
 
-        # Ensure we're dealing with a mesh
-        if obj.type != 'MESH':
-            self.report({'ERROR'}, "Active object is not a mesh")
-            return {'CANCELLED'}
+                obj = resolve_bmesh(obj, bm) # Resolve Cached bmesh data before continuing
 
-        # Prune loose meshes that are below the user defined threshold
-        initial_objects = set(bpy.data.objects)
+                from .ds_utils import decimate_object, vertex_group_from_outer_boundary
 
-        bpy.ops.mesh.separate(type='LOOSE')
-        new_objects = [o for o in bpy.data.objects if o not in initial_objects and o.type == 'MESH']
+                target_ratio = max(min(initial_reduction / start_tri_cnt, 1.0), 0.0)
+                vg = vertex_group_from_outer_boundary(obj)
 
-        bpy.context.view_layer.update()
+                decimate_object(obj, target_ratio, vg_name=vg, merge_threshold=merge_threshold)
 
-        meshes_to_join = []
-        for mesh in new_objects:
-            if len(mesh.data.vertices) < loose_threshold:
-                bpy.data.objects.remove(mesh, do_unlink=True)
-            else:
-                meshes_to_join.append(mesh)
-
-        # Join Mesh back together
-        if meshes_to_join:
-            for mesh in meshes_to_join:
-                mesh.select_set(True)
-                context.view_layer.objects.active = mesh  # Set last in list as active
-
-            # Join the selected meshes
-            bpy.ops.object.join()
-
-            # Now the active object is the joined mesh
-            obj = context.active_object  # Update obj to the newly joined mesh
-            obj.name = orig_name
-            obj.data.name = orig_name
-
-        # Fill potential holes under the user defined boundary_length
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_all(action='SELECT')
-        bpy.ops.mesh.fill_holes(sides=boundary_length)
-
-        # Additional Cleanup Operations
-        bpy.ops.mesh.dissolve_degenerate()
-        bpy.ops.mesh.remove_doubles(threshold=merge_threshold, use_unselected=True)
-        bpy.ops.mesh.quads_convert_to_tris(quad_method='BEAUTY', ngon_method='BEAUTY')
-
-        bpy.ops.object.mode_set(mode='OBJECT')
-        obj = context.active_object
+        obj = clean_mesh_geometry(obj, merge_threshold, bm=bm, return_bm=False) # We resolve the bmesh back to obj in any case here.
 
         # Report the changes
         final_vert_count = len(obj.data.vertices)
+        removed_verts = start_vert_cnt - final_vert_count
+        self.report({"INFO"}, f"Mesh cleaning completed: Removed {removed_verts} vertices.")
+        self.report({"INFO"}, f"Face count now: {len(obj.data.polygons)}.")
+        print(f"Face count now: {len(obj.data.polygons)}.")
 
-        self.report({'INFO'}, f"Mesh cleaning completed: Removed {start_vert_cnt - final_vert_count} vertices.")
-        return {'FINISHED'}
+        return {"FINISHED"}
 
 
 class VIEW3D_PT_clean_mesh(bpy.types.Panel):
     """Panel to set parameters and execute mesh cleaning"""
     bl_label = CLEANUP_PANEL_LABEL
     bl_idname = CLEANUP_PANEL_IDNAME
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = 'Tool'
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Tool"
 
     def draw(self, context):
         layout = self.layout
@@ -136,6 +102,13 @@ classes = (MESH_OT_clean_mesh, VIEW3D_PT_clean_mesh)
 
 
 def register():
+    if ENV_IS_BLENDER:
+        # Ensure pip is available
+        ensurepip.bootstrap()
+
+        # Run the installation check
+        ensure_package_installed(PYFQMR_MODULE_NAME)
+
     from bpy.utils import register_class
 
     for cls in classes:
@@ -161,6 +134,14 @@ def unregister():
         del bpy.types.Scene.boundary_length
     if hasattr(bpy.types, "merge_threshold"):
         del bpy.types.Scene.merge_threshold
+
+    if ENV_IS_BLENDER:
+        # Ensure pip is available
+        ensurepip.bootstrap()
+        print("UNINSTALLING PYFQMR")
+        # Uninstall xatlas
+        uninstall_package(PYFQMR_MODULE_NAME)
+
 
 
 if __name__ == "__main__":

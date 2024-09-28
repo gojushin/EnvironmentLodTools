@@ -1,0 +1,121 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    container:
+      image: alpine:latest
+
+    steps:
+      - name: Install Dependencies
+        run: |
+          apk add --no-cache git zip bash python3 python3-dev py3-pip build-base
+
+      - name: Check out code with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Build Python Modules in enviro_lod_tools/external
+        run: |
+          # Navigate to the external directory
+          cd enviro_lod_tools/external
+
+          # List of submodule directories (assuming they are direct subdirectories)
+          for dir in */ ; do
+            if [ -f "$dir/setup.py" ]; then
+              echo "Building Python module in $dir"
+              cd "$dir"
+              # Install the module in a temporary location
+              python3 setup.py build
+              python3 setup.py install --root=../../../../temp_installation
+              cd ..
+            fi
+          done
+
+      - name: Clean Up Unnecessary Files in enviro_lod_tools/external
+        run: |
+          cd enviro_lod_tools/external
+          # Remove build directories and any other unnecessary files
+          find . -type d -name '__pycache__' -exec rm -r {} +
+          find . -type d -name 'build' -exec rm -r {} +
+          find . -type d -name 'dist' -exec rm -r {} +
+          find . -type f -name '*.pyc' -delete
+          # Remove setup files if not needed
+          find . -type f -name 'setup.py' -delete
+          find . -type f -name 'setup.cfg' -delete
+          find . -type f -name 'MANIFEST.in' -delete
+          cd ../..
+
+      - name: Move Installed Modules Back to enviro_lod_tools/external
+        run: |
+          # Copy the installed modules back to the external directory
+          cp -r temp_installation/usr/local/lib/python3*/site-packages/* enviro_lod_tools/external/
+          # Remove the temporary installation directory
+          rm -rf temp_installation
+
+      - name: Get Tag Name
+        id: get_tag
+        shell: bash
+        run: |
+          TAG=$(git describe --tags --exact-match)
+          echo "TAGS: $TAG"
+          if [ -z "$TAG" ]; then
+            echo "No tags on this commit."
+            echo "TAG=" >> $GITHUB_ENV
+          else
+            echo "Found tag: $TAG"
+            echo "TAG=$TAG" >> $GITHUB_ENV
+          fi
+
+      - name: Exit if No Tag
+        if: env.TAG == ''
+        run: |
+          echo "No valid tag found on this commit. Exiting."
+          exit 0
+
+      - name: Create enviro_lod_tools_plugin_${{ env.TAG }}.zip
+        if: env.TAG != ''
+        run: |
+          cd enviro_lod_tools
+          zip -r ../enviro_lod_tools_plugin_${TAG}.zip .
+          cd ..
+
+      - name: Create enviro_lod_tools_gui_${{ env.TAG }}.zip
+        if: env.TAG != ''
+        run: |
+          zip -r enviro_lod_tools_gui_${TAG}.zip .
+
+      - name: Create GitHub Release
+        if: env.TAG != ''
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ env.TAG }}
+          release_name: Release ${{ env.TAG }}
+          draft: false
+          prerelease: true
+
+      - name: Upload Release Asset - Plugin Zip
+        if: env.TAG != ''
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: enviro_lod_tools_plugin_${{ env.TAG }}.zip
+          asset_name: enviro_lod_tools_plugin_${{ env.TAG }}.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Asset - GUI Zip
+        if: env.TAG != ''
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: enviro_lod_tools_gui_${{ env.TAG }}.zip
+          asset_name: enviro_lod_tools_gui_${{ env.TAG }}.zip
+          asset_content_type: application/zip

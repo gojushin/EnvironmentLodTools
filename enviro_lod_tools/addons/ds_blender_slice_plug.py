@@ -6,6 +6,7 @@ import bmesh
 from bmesh.utils import edge_split, face_split
 from mathutils import Vector
 
+from enviro_lod_tools.addons.ds_utils import clean_mesh_geometry
 from .ds_consts import SLICE_IDNAME, SLICE_LABEL, SLICE_PANEL_LABEL, SLICE_PANEL_IDNAME
 
 X_VEC = Vector((1, 0, 0))  # Vec into X Direction
@@ -14,7 +15,7 @@ Y_VEC = Vector((0, 1, 0))  # Vec into Y Direction
 bl_info = {
     "name": "Mesh Slicer",
     "author": "Nico Breycha",
-    "version": (0, 1, 2),
+    "version": (0, 1, 3),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Cut's a Mesh into a user-defined amount of square slices, "
@@ -409,6 +410,7 @@ class MESH_OT_quadrant_slicer(bpy.types.Operator):
 
         # Recalculate normals for the final mesh parts
         for i, part in enumerate(xy_sliced_meshes):
+            part = clean_mesh_geometry(part, 0.00001, return_bm=False)
             part.name = part.name.replace("_neg", "")
             part.name = part.name.replace("_pos", "")
             suffix = f"_{i + 1:03d}"

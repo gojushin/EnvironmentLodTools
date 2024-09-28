@@ -1,12 +1,12 @@
 import bpy
 
 from .ds_consts import LOD_IDNAME, LOD_LABEL, LOD_PANEL_IDNAME, LOD_PANEL_LABEL
-from .ds_utils import vertex_group_from_outer_boundary, decimate_object
+from .ds_utils import delete_loose_geometry, decimate_with_pyqmfr, clean_mesh_geometry
 
 bl_info = {
     "name": "LOD Generator",
     "author": "Nico Breycha",
-    "version": (0, 0, 5),
+    "version": (0, 0, 6),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Generates levels of detail (LODs) for selected mesh objects.",
@@ -44,7 +44,7 @@ class LODGenerator:
             return
 
         for obj in context.selected_objects:
-            if obj.type == 'MESH':
+            if obj.type == "MESH":
                 # Skip objects with no polygons
                 if len(obj.data.polygons) == 0:
                     continue
@@ -95,17 +95,32 @@ class LODGenerator:
                 continue
 
             # Duplicate and rename the object
-            bpy.ops.object.select_all(action='DESELECT')
+            bpy.ops.object.select_all(action="DESELECT")
             previous_lod.select_set(True)
-            bpy.ops.object.duplicate(linked=False, mode='TRANSLATION')
+            bpy.ops.object.duplicate(linked=False, mode="TRANSLATION")
             new_obj = context.selected_objects[0]
             new_obj.name = new_obj_name
 
-            # Preserving outer boundaries
-            vg_name = vertex_group_from_outer_boundary(new_obj)
+            reduction_ratio = max(1.0 - self.reduction_percentage / 100, 0.01)
+            bm = None
 
-            # Decimate the object
-            decimate_object(new_obj, self.reduction_percentage, iterations=1, vg_name=vg_name)
+            try:
+                reduction_target = reduction_ratio * len(previous_lod.data.polygons)
+
+                bm = decimate_with_pyqmfr(new_obj, reduction_target, max_iterations=100, preserve_border=True, return_bm=True)
+            except ImportError as e:
+                print("Could not import PyQmfr: ", e)
+                print("Fallback to Collapse via iter. Decimate Operator: ")
+
+                from .ds_utils import decimate_object, vertex_group_from_outer_boundary
+
+                vg = vertex_group_from_outer_boundary(new_obj)
+
+                decimate_object(new_obj, reduction_ratio, vg_name=vg, merge_threshold=0.00001)
+
+            bm = clean_mesh_geometry(new_obj, 0.0001, bm=bm, return_bm=True)
+
+            new_obj = delete_loose_geometry(new_obj, bm=bm, return_bm=False)
 
             # Update the previous LOD to the new object
             previous_lod = new_obj
@@ -165,8 +180,8 @@ def register():
         register_class(cls)
 
     bpy.types.Scene.lod_count = bpy.props.IntProperty(name="Number of LODs", default=3, min=1)
-    bpy.types.Scene.reduction_percentage = bpy.props.FloatProperty(name="Reduction Percentage", default=50.0, min=1.0,
-                                                                   max=99.0)
+    bpy.types.Scene.reduction_percentage = bpy.props.FloatProperty(name="Reduction per step", default=50.0, min=0.0,
+                                                                   max=100.0)
 
 
 def unregister():

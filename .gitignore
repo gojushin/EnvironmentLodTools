@@ -84,5 +84,6 @@ dmypy.json
 # Extension
 
 enviro_lod_tools.zip
+experimental/
 
 # End of template

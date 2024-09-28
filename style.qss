@@ -64,3 +64,12 @@ QComboBox {
     border-radius: 3px;
     background-color: #fff;
 }
+
+QCheckBox {
+    spacing: 5px;
+}
+
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+}

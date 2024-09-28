@@ -1,0 +1,6 @@
+[submodule "enviro_lod_tools/external/pyfqmr"]
+	path = enviro_lod_tools/external/pyfqmr
+	url = https://github.com/Kramer84/pyfqmr-Fast-Quadric-Mesh-Reduction.git
+[submodule "enviro_lod_tools/external/xatlas"]
+	path = enviro_lod_tools/external/xatlas
+	url = https://github.com/mworchel/xatlas-python.git

@@ -1,19 +1,20 @@
 import os
 import copy
 import math
+from datetime import datetime
 
 import bpy
 
 from .ds_consts import (CLEANUP_IDNAME, BAKE_IDNAME, UNWRAP_IDNAME, SLICE_IDNAME, COMB_IDNAME, LOD_IDNAME, COMB_LABEL,
-                        COMB_PANEL_LABEL, COMB_PANEL_IDNAME)
+                        COMB_PANEL_LABEL, COMB_PANEL_IDNAME, ASCII_ART)
 from .ds_blender_baker_plug import PluginBakerSettings
-from .ds_utils import vertex_group_from_outer_boundary, clear_scene, decimate_object, launch_operator_by_name
+from .ds_utils import clear_scene, launch_operator_by_name, merge_meshes
 
 
 bl_info = {
     "name": "Automated LOD Generation Tool",
     "author": "Nico Breycha",
-    "version": (0, 0, 4),
+    "version": (0, 0, 5),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Combines the Operator from all the other plugins.",
@@ -36,38 +37,32 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
             # Get the list of new objects
             imported_objects = [_obj for _obj in bpy.data.objects if _obj not in existing_objects]
 
-            # Deselect all
-            bpy.ops.object.select_all(action='DESELECT')
+            # Filter only meshes
+            meshes = [_obj for _obj in imported_objects if _obj.type == "MESH"]
 
-            # If it's multiple meshes, join them into one.
-            for _obj in imported_objects:
-                if _obj.type == 'MESH':
-                    _obj.select_set(True)
-                    bpy.context.view_layer.objects.active = _obj
+            if not meshes:
+                raise ValueError("No meshes imported")
 
-            bpy.ops.object.join()
-            bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+            # Use the first mesh as the base mesh, and merge others into it
+            base_mesh = meshes[0]
+            additional_meshes = meshes[1:]
 
-            # Apply rotation correction if needed
-            _obj = bpy.context.active_object
+            if additional_meshes:
+                base_mesh = merge_meshes(base_mesh, additional_meshes, return_bm=False)
 
-            if rotation_correction[0] != 0:
-                _obj.rotation_euler[0] = math.radians(rotation_correction[0])
-            if rotation_correction[1] != 0:
-                _obj.rotation_euler[1] = math.radians(rotation_correction[1])
-            if rotation_correction[2] != 0:
-                _obj.rotation_euler[2] = math.radians(rotation_correction[2])
+            # Apply rotation correction manually
+            rotation_matrix = base_mesh.matrix_world.to_euler()
+            rotation_matrix.x += math.radians(rotation_correction[0])
+            rotation_matrix.y += math.radians(rotation_correction[1])
+            rotation_matrix.z += math.radians(rotation_correction[2])
+            base_mesh.matrix_world = rotation_matrix.to_matrix().to_4x4()
 
-            bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-
-            # Rename the original mesh
-            imported_mesh = bpy.context.active_object
-
+            # If name change is needed, change the object's name
             if not keep_original_name:
-                imported_mesh.name = "original_mesh"
-                imported_mesh.data.name = "original_mesh"
+                base_mesh.name = "original_mesh"
+                base_mesh.data.name = "original_mesh"
 
-            return imported_mesh
+            return base_mesh
 
         clear_scene()
 
@@ -125,7 +120,9 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
 
         # Highpoly name is changed later, as we modify it later in the script
         context.scene.baker_settings.ray_distance = baker_settings_comb.ray_distance
+        context.scene.baker_settings.render_device = baker_settings_comb.render_device
         context.scene.baker_settings.texture_resolution = baker_settings_comb.texture_resolution
+        context.scene.baker_settings.lower_res_by_lod = baker_settings_comb.lower_res_by_lod
         context.scene.baker_settings.texture_margin = baker_settings_comb.texture_margin
         context.scene.baker_settings.save_path = baker_settings_comb.save_path
 
@@ -137,31 +134,29 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
         bpy.context.view_layer.objects.active = working_mesh
 
         # Execute Operators
+        print("Current time: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        print(ASCII_ART["CLEANUP"])
         launch_operator_by_name(CLEANUP_IDNAME)
 
+        print("Current time: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        print(ASCII_ART["SLICING"])
         launch_operator_by_name(SLICE_IDNAME)
 
-        # Ensure Target Polycount set by the user as intial polycount.
+        blend_file_path = os.path.join(export_fp_comb, "sliced_scene.blend")
+        bpy.ops.wm.save_as_mainfile(filepath=blend_file_path, check_existing=False, compress=True)
+
+        # Ensure Target Poly Count set by the user as initial poly count.
         parts = set()
 
         for obj in bpy.data.objects:
             if obj.type == "MESH":
                 parts.add(obj)
 
-        # Clamp part count to not exceed initial reduction count.
-        target_part_pc = initial_reduction_comb / num_of_modules_comb
-
-        for part in parts:
-            part_pc = len(part.data.polygons)
-
-            if part_pc > target_part_pc:
-                perc_red = (1 - target_part_pc / part_pc) * 100  # Mul with 100 to get percentage instead of decimal
-                vg = vertex_group_from_outer_boundary(part)
-                decimate_object(part, perc_red, iterations=1, vg_name=vg)
-
         for part in parts:
             part.select_set(True)
 
+        print("Current time: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        print(ASCII_ART["LOD"])
         launch_operator_by_name(LOD_IDNAME)
 
         objects_to_bake = {obj for obj in bpy.data.objects if obj.type == "MESH"}
@@ -169,6 +164,8 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
         for obj in objects_to_bake:
             obj.select_set(True)
 
+        print("Current time: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        print(ASCII_ART["UNWRAPPING"])
         launch_operator_by_name(UNWRAP_IDNAME)
 
         original_mesh = import_and_prepare_original_mesh(import_fp_comb, rot_correction_comb, keep_original_name=False)
@@ -178,7 +175,12 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
             obj.vertex_groups.clear() # Clear a little non-relevant data along the way.
             obj.select_set(True)
 
+        print("Current time: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        print(ASCII_ART["BAKING"])
         launch_operator_by_name(BAKE_IDNAME)
+
+        print("Current time: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        print("Done Baking")
 
         # Remove the original mesh from the scene before export.
         original_mesh.select_set(True)
@@ -187,13 +189,13 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
         # Export newly created objects.
         for obj in objects_to_bake:
             # Deselect all objects
-            bpy.ops.object.select_all(action='DESELECT')
+            bpy.ops.object.select_all(action="DESELECT")
 
             # Select the object to export
             obj.select_set(True)
             bpy.context.view_layer.objects.active = obj
 
-            export_path = os.path.join(export_fp_comb, obj.name + '.obj')
+            export_path = os.path.join(export_fp_comb, obj.name + ".obj")
             bpy.ops.wm.obj_export(filepath=export_path, export_selected_objects=True)
 
         # Restore Operator Properties
@@ -207,7 +209,9 @@ class OBJECT_OT_lod_pipeline(bpy.types.Operator):
 
         context.scene.baker_settings.highpoly_mesh_name = restore_dict["baker_settings"].highpoly_mesh_name
         context.scene.baker_settings.ray_distance = restore_dict["baker_settings"].ray_distance
+        context.scene.baker_settings.render_device = restore_dict["baker_settings"].render_device
         context.scene.baker_settings.texture_resolution = restore_dict["baker_settings"].texture_resolution
+        context.scene.baker_settings.lower_res_by_lod = restore_dict["baker_settings"].lower_res_by_lod
         context.scene.baker_settings.texture_margin = restore_dict["baker_settings"].texture_margin
         context.scene.baker_settings.save_path = restore_dict["baker_settings"].save_path
 

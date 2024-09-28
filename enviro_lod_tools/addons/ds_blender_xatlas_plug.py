@@ -21,59 +21,28 @@ https://github.com/TylerGubala/blenderpy/issues/23
 """
 
 import sys
-import subprocess
 import ensurepip
-import importlib.util
 import multiprocessing
 
 import numpy as np
 import bpy
 import bmesh
 
-from .ds_consts import UNWRAP_IDNAME, UNWRAP_LABEL, UNWRAP_PANEL_LABEL, UNWRAP_PANEL_IDNAME
+from .ds_consts import UNWRAP_IDNAME, UNWRAP_LABEL, UNWRAP_PANEL_LABEL, UNWRAP_PANEL_IDNAME, XATLAS_MODULE_NAME
+from .ds_utils import ensure_package_installed, uninstall_package
+
 
 ENV_IS_BLENDER = bpy.app.binary_path != ""
 
 bl_info = {
     "name": "XAtlas Unwrapper",
     "author": "Nico Breycha",
-    "version": (0, 0, 4),
+    "version": (0, 0, 5),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Unwraps the model using xatals.",
     "category": "Object",
 }
-
-def install_package(package_name):
-    python_executable = sys.executable
-    try:
-        # Execute the pip command to install the package
-        subprocess.check_call([python_executable, "-m", "pip", "install", package_name])
-        print(f"Successfully installed {package_name}")
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to install {package_name}: {e}")
-
-
-def is_package_installed(package_name):
-    package_spec = importlib.util.find_spec(package_name)
-    return package_spec is not None
-
-
-def ensure_package_installed(package_name):
-    if not is_package_installed(package_name):
-        print(f"{package_name} is not installed. Installing now...")
-        install_package(package_name)
-    else:
-        print(f"{package_name} is already installed.")
-
-
-def ensure_xatlas_installed():
-    ensure_package_installed("xatlas")
-
-
-def uninstall_xatlas_package():
-    if "xatlas" in sys.modules:
-        subprocess.check_call(["pip", "uninstall", "-y", "xatlas"])
 
 
 def _process_mesh_single_process(data):
@@ -181,9 +150,7 @@ class MESH_OT_unwrap_xatlas(bpy.types.Operator):
             # Use multiprocessing Pool
             multiprocessing.freeze_support()
 
-            processes = min(int(multiprocessing.cpu_count() / 4), len(mesh_data_list))
-
-            with (multiprocessing.Pool(processes=processes) as pool):
+            with (multiprocessing.Pool() as pool):
                 # Map the processing function to the data
                 results = []
                 for result in pool.imap(_process_mesh_multiprocessing, reversed(mesh_data_list)):
@@ -194,7 +161,11 @@ class MESH_OT_unwrap_xatlas(bpy.types.Operator):
             # Multiprocessing not available (This is our fallback for using as plugin)
             self.report({"INFO"}, f"Multiprocessing not available: {e}")
             results = []
-            for data in mesh_data_list:
+            import datetime
+            for data in reversed(mesh_data_list):
+                print(f"Unwrapping: {data[0]} with {len(data[1])} vertices at {datetime.datetime.now()}")
+                self.report({"INFO"}, f"Unwrapping: {data[0]} with {len(data[1])} vertices at {datetime.datetime.now()}")
+
                 results.append(_process_mesh_single_process(data))
         except Exception as e:
             self.report({"ERROR"}, f"Multiprocessing failed: {e}")
@@ -282,7 +253,7 @@ def register():
         ensurepip.bootstrap()
 
         # Run the installation check
-        ensure_xatlas_installed()
+        ensure_package_installed(XATLAS_MODULE_NAME)
 
     from bpy.utils import register_class
 
@@ -301,7 +272,7 @@ def unregister():
         ensurepip.bootstrap()
         print("UNINSTALLING XATALAS")
         # Uninstall xatlas
-        uninstall_xatlas_package()
+        uninstall_package(XATLAS_MODULE_NAME)
 
 
 if __name__ == "__main__":

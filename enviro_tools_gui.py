@@ -3,22 +3,26 @@ import sys
 import time
 from importlib.metadata import distribution, PackageNotFoundError
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton,
     QFileDialog, QLabel, QSpinBox, QDoubleSpinBox, QComboBox,
-    QMessageBox, QGroupBox, QHBoxLayout, QFrame, QLineEdit
+    QMessageBox, QGroupBox, QHBoxLayout, QFrame, QLineEdit, QCheckBox
 )
 
-from enviro_lod_tools.addons.ds_utils import launch_operator_by_name
-from enviro_lod_tools.addons.ds_consts import COMB_IDNAME
+from enviro_lod_tools.addons.ds_utils import launch_operator_by_name, install_local_package
+from enviro_lod_tools.addons.ds_consts import COMB_IDNAME, EXTERNAL_FOLDER
+
 import deploy
+
 
 SCRIPT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__)))
 PLUGIN_BASENAME = "enviro_lod_tools"
 PLUGIN_FILE = os.path.join(SCRIPT_DIR, f"{PLUGIN_BASENAME}.zip")
 PLUGIN_DIR = os.path.join(SCRIPT_DIR, PLUGIN_BASENAME)
+
+REQUIERED_MODULES = ("bpy", "numpy", "xatlas", "pyfqmr")
 
 
 def calculate_polycount(file_path):
@@ -40,6 +44,27 @@ def calculate_polycount(file_path):
     return polycount
 
 
+class ModuleInstallerThread(QThread):
+    installation_complete = Signal(str, bool)  # module_name, success
+
+    def __init__(self, module_name):
+        super().__init__()
+        self.module_name = module_name
+
+    def run(self):
+        # Install the module
+        success = False
+        try:
+            install_local_package(self.module_name)
+            success = True
+        except Exception as e:
+            print(f"Error installing {self.module_name}: {e}")
+            success = False
+        # Emit signal that installation is complete
+        self.installation_complete.emit(self.module_name, success)
+
+
+
 class ModelProcessorGUI(QWidget):
     def __init__(self):
         super().__init__()
@@ -48,6 +73,9 @@ class ModelProcessorGUI(QWidget):
         self.setWindowTitle("Environment LOD Tools")
         self.resize(450, 600)
         self.setMinimumWidth(450)
+
+        self.module_installers = {}
+        self.module_statuses = {}
 
         self.setWindowIcon(QIcon("elt_icon.png"))
         with open("style.qss", "r") as f:
@@ -109,6 +137,8 @@ class ModelProcessorGUI(QWidget):
         self.initial_reduction_polycount = QSpinBox()
         self.initial_reduction_polycount.setRange(0, 10000000)
         self.initial_reduction_polycount.setValue(1000000)
+        self.initial_reduction_polycount.setToolTip("Set the initial reduction target.\n"
+                                                    "(This will be the polycount for LOD 0)")
         self.loose_comp_threshold = QSpinBox()
         self.loose_comp_threshold.setRange(0, 10000)
         self.loose_comp_threshold.setValue(1000)
@@ -119,7 +149,7 @@ class ModelProcessorGUI(QWidget):
         self.merge_threshold.setRange(0.0001, 0.1)
         self.merge_threshold.setDecimals(4)
         self.merge_threshold.setSingleStep(0.0001)
-        self.merge_threshold.setValue(0.0001)
+        self.merge_threshold.setValue(0.001)
 
         # Create Horizontal Layouts for each set of controls
         for label_text, widget in [("Initial Reduction Polycount", self.initial_reduction_polycount),
@@ -157,6 +187,9 @@ class ModelProcessorGUI(QWidget):
         self.reduction_percentage = QDoubleSpinBox()
         self.reduction_percentage.setRange(0.0, 100.0)
         self.reduction_percentage.setValue(50.0)
+        self.reduction_percentage.setSuffix(" %")
+        self.reduction_percentage.setToolTip("Percentage by which to reduce the mesh complexity in each LOD.\n"
+                                             "(0.00 % = no reduction, 100.00 % = full reduction)")
 
         for label_text, widget in [("Number of LODs", self.num_lods),
                                    ("Reduction Percentage", self.reduction_percentage)]:
@@ -171,22 +204,41 @@ class ModelProcessorGUI(QWidget):
         bake_group = QGroupBox("Bake Settings")
         bake_layout = QVBoxLayout()
 
+        self.render_device = QComboBox()
+        self.render_device.setToolTip("Select the render device to use. If not enough GPU Memory is available,\n"
+                                      "it is recommended to use CPU.")
+        self.render_device.addItems(["CPU", "GPU"])
+        self.render_device.setCurrentText("GPU")
+        render_device_layout = QHBoxLayout()
+        render_device_layout.addWidget(QLabel("Render Device"))
+        render_device_layout.addWidget(self.render_device)
+
+        self.lower_res_by_lod = QCheckBox()
+        self.lower_res_by_lod.setChecked(True)
+        self.lower_res_by_lod.setToolTip("Reduce the resolution of the baked textures in power of 2 steps for each LODs.")
+        lower_res_by_lod_layout = QHBoxLayout()
+        lower_res_by_lod_layout.addWidget(QLabel("Lower Res. per LOD"))
+        lower_res_by_lod_layout.addWidget(self.lower_res_by_lod)
+
         self.texture_resolution = QComboBox()
-        self.texture_resolution.addItems(["256", "512", "1024", "2048", "4096"])
+        self.texture_resolution.addItems(["256", "512", "1024", "2048", "4096", "8192"])
         self.texture_resolution.setCurrentText("1024")
         texture_resolution_layout = QHBoxLayout()
         texture_resolution_layout.addWidget(QLabel("Texture Resolution"))
         texture_resolution_layout.addWidget(self.texture_resolution)
 
         self.ray_distance = QDoubleSpinBox()
-        self.ray_distance.setRange(0.01, 1)
+        self.ray_distance.setToolTip("The distance at which the rays will be cast. Value depends of the WS size of the mesh.")
+        self.ray_distance.setRange(0.01, 100.0)
         self.ray_distance.setValue(0.1)
         self.ray_distance.setSingleStep(0.01)
         ray_distance_layout = QHBoxLayout()
         ray_distance_layout.addWidget(QLabel("Ray Distance"))
         ray_distance_layout.addWidget(self.ray_distance)
 
+        bake_layout.addLayout(render_device_layout)
         bake_layout.addLayout(texture_resolution_layout)
+        bake_layout.addLayout(lower_res_by_lod_layout)
         bake_layout.addLayout(ray_distance_layout)
         bake_group.setLayout(bake_layout)
 
@@ -200,11 +252,14 @@ class ModelProcessorGUI(QWidget):
         self.numpy_found_label = QLabel("Checking...")
         self.bpy_found_label = QLabel("Checking...")
         self.xatlas_found_label = QLabel("Checking...")
+        self.pyfqmr_found_label = QLabel("Checking...")
         module_found_layout.addWidget(self.numpy_found_label)
         module_found_layout.addSpacing(20)
         module_found_layout.addWidget(self.bpy_found_label)
         module_found_layout.addSpacing(20)
         module_found_layout.addWidget(self.xatlas_found_label)
+        module_found_layout.addSpacing(20)
+        module_found_layout.addWidget(self.pyfqmr_found_label)
 
         # Add all groups to the main layout
         layout.addWidget(io_group)
@@ -217,10 +272,9 @@ class ModelProcessorGUI(QWidget):
 
         self.setLayout(layout)
 
-        self.all_modules_installed = True
-        self.all_modules_installed &= self.check_module("numpy")
-        self.all_modules_installed &= self.check_module("bpy")
-        self.all_modules_installed &= self.check_module("xatlas")
+        for module in REQUIERED_MODULES:
+            self.check_module(module)
+
 
     def check_module(self, module_name):
         """
@@ -240,17 +294,63 @@ class ModelProcessorGUI(QWidget):
             version = dist.version
             getattr(self, label_name).setText(f"{module_name} {version}")
             getattr(self, label_name).setStyleSheet("color: green;")
+            self.module_statuses[module_name] = "installed"
             return True
         except PackageNotFoundError:
+            module_dirs = [f for f in os.listdir(EXTERNAL_FOLDER) if os.path.isdir(os.path.join(EXTERNAL_FOLDER, f))]
+            if module_name in module_dirs and module_name not in self.module_installers:
+                # Start the module installer thread
+                getattr(self, label_name).setText(f"{module_name} installing...")
+                getattr(self, label_name).setStyleSheet("color: orange;")
+
+                installer_thread = ModuleInstallerThread(module_name)
+                installer_thread.installation_complete.connect(self.on_module_installation_complete)
+                installer_thread.start()
+
+                self.module_installers[module_name] = installer_thread
+                self.module_statuses[module_name] = "installing"
+
+                # Return False for now, will update when installation completes
+                return False
+
             # Handle the case where the package is not found
             getattr(self, label_name).setText(f"{module_name} not found")
             getattr(self, label_name).setStyleSheet("color: red;")
+            self.module_statuses[module_name] = "not found"
             return False
         except Exception as e:
             # General exception handling for any other issues that arise
             getattr(self, label_name).setText("Error checking module")
             getattr(self, label_name).setStyleSheet("color: red;")
+            self.module_statuses[module_name] = "error"
             return False
+
+    def on_module_installation_complete(self, module_name, success):
+        """
+        Slot to handle module installation completion.
+
+        :param module_name: The name of the module that was installed.
+        :type module_name: str
+        :param success: True if installation was successful, False otherwise.
+        :type success: bool
+        """
+        # Remove the installer thread from the dictionary
+        if module_name in self.module_installers:
+            del self.module_installers[module_name]
+
+        label_name = module_name + "_found_label"
+
+        if success:
+            # Re-check the module to update the label
+            dist = distribution(module_name)
+            version = dist.version
+            getattr(self, label_name).setText(f"{module_name} {version}")
+            getattr(self, label_name).setStyleSheet("color: green;")
+            self.module_statuses[module_name] = 'installed'
+        else:
+            getattr(self, label_name).setText(f"{module_name} installation failed")
+            getattr(self, label_name).setStyleSheet("color: red;")
+            self.module_statuses[module_name] = 'error'
 
     def select_highpoly_model(self):
         """Open a file dialog to select a high-poly model and update related UI elements."""
@@ -386,19 +486,24 @@ class ModelProcessorGUI(QWidget):
         bpy.types.Scene.reduction_percentage_comb = values["reduction_percentage"]
 
         bpy.data.scenes["Scene"].baker_settings_comb.highpoly_mesh_name = values["highpoly_model_path"]
+        bpy.data.scenes["Scene"].baker_settings_comb.render_device = values["render_device"]
         bpy.data.scenes["Scene"].baker_settings_comb.texture_resolution = values["texture_resolution"]
+        bpy.data.scenes["Scene"].baker_settings_comb.lower_res_by_lod = values["lower_res_by_lod"]
         bpy.data.scenes["Scene"].baker_settings_comb.save_path = values["export_path"]
         bpy.data.scenes["Scene"].baker_settings_comb.ray_distance = values["ray_distance"]
 
     def start_pipeline(self):
         """Starts the pipeline with the current configuration values."""
         start_time = time.time()
-        if not self.all_modules_installed:
-            QMessageBox.critical(self, "Error", "Not all modules that are required are installed.\n"
-                                                "Please install the missing dependencies using PIP to your "
-                                                "local Python environment and try again. "
-                                                "You can see what modules are missing by checking "
-                                                "the red labels below the start button.")
+        if self.module_installers:
+            QMessageBox.warning(self, "Installation in Progress",
+                                "Please wait for module installations to complete before starting the pipeline.")
+            return
+
+        # Check if all modules are installed
+        if not all(status == "installed" for status in self.module_statuses.values()):
+            QMessageBox.critical(self, "Error", "Not all required modules are installed.\n"
+                                                "Please install the missing dependencies and try again.")
             return
 
         highpoly_model_path = self.highpoly_model_line_edit.text()
@@ -425,7 +530,9 @@ class ModelProcessorGUI(QWidget):
         num_modules = int(self.num_modules.currentText())
         num_lods = self.num_lods.value()
         reduction_percentage = self.reduction_percentage.value()
+        render_device = self.render_device.currentText()
         texture_resolution = int(self.texture_resolution.currentText())
+        lower_res_by_lod = self.lower_res_by_lod.isChecked()
         ray_distance = self.ray_distance.value()
 
         values = {
@@ -438,7 +545,9 @@ class ModelProcessorGUI(QWidget):
             "num_modules": num_modules,
             "num_lods": num_lods,
             "reduction_percentage": reduction_percentage,
+            "render_device": render_device,
             "texture_resolution": texture_resolution,
+            "lower_res_by_lod": lower_res_by_lod,
             "ray_distance": ray_distance,
             "rot_correction": rot_correction
         }
