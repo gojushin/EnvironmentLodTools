@@ -27,6 +27,7 @@ def cubic_ease_out(t):
 
 # region Package Management
 
+
 def is_package_installed(package_name):
     """
     Check if a package is installed.
@@ -66,8 +67,12 @@ def ensure_package_installed(package_name):
     :return: None
     """
     if not is_package_installed(package_name):
-        print(f"{package_name} is not installed. Installing now...")
-        install_local_package(package_name)
+        try:
+            print(f"{package_name} is not installed. Installing now...")
+            install_package(package_name)
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to install {package_name}: {e}")
+            install_local_package(package_name)
     else:
         print(f"{package_name} is already installed.")
 

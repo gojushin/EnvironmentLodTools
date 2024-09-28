@@ -1,5 +1,15 @@
 # Environment LOD Tools
 
+Blender 4.0.0
+
+[![Linux Build/Release (Python 3.10)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/deploy_zip_files_3_10_linux.yml/badge.svg)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/deploy_zip_files_3_10_linux.yml)
+[![Windows Build/Release (Python 3.10)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/deploy_zip_files_3_10_win.yml/badge.svg)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/deploy_zip_files_3_10_win.yml)
+
+Blender 4.1.0 and above
+
+[![Linux Build/Release (Python 3.11)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/deploy_zip_files_3_11_linux.yml/badge.svg)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/deploy_zip_files_3_11_linux.yml)
+[![Windows Build/Release (Python 3.11)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/deploy_zip_files_3_11_win.yml/badge.svg)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/deploy_zip_files_3_11_win.yml)
+
 <p align="center">
   <img width="960" height="410" src="https://raw.githubusercontent.com/gojushin/EnvironmentLodTools/main/docs/resources/enviro_lod_tools_example.jpg" alt="LOD Example logo">
 </p>

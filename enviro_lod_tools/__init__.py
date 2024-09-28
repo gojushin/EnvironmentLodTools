@@ -5,7 +5,7 @@ from .addons import (ds_blender_lod_plug, ds_blender_slice_plug, ds_blender_xatl
 bl_info = {
     "name": "Environment LOD Tools",
     "author": "Nico Breycha",
-    "version": (0, 0, 4),
+    "version": (0, 0, 5),
     "blender": (4, 0, 0),
     "description": "Generates LODs for selected mesh objects across multiple scripts.",
     "category": "Object",

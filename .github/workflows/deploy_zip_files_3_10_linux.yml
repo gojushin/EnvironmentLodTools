@@ -1,0 +1,191 @@
+name: Linux Build/Release (Python 3.10)
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    container:
+      image: python:3.10-slim-bullseye
+
+    steps:
+      - name: Set PLATFORM Environment Variable
+        run: echo "PLATFORM=linux" >> $GITHUB_ENV
+
+      - name: Install Additional Dependencies
+        run: |
+          apt-get update
+          apt-get install -y git zip bash build-essential cmake ninja-build g++
+
+      - name: Install GitHub CLI
+        run: |
+          type -p wget >/dev/null || (apt-get update && apt-get install wget -y)
+          mkdir -p -m 755 /etc/apt/keyrings
+          wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null
+          chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          apt-get update
+          apt-get install gh -y
+
+      - name: Mark repository as safe for Git
+        run: |
+          git config --global --add safe.directory /__w/EnvironmentLodTools/EnvironmentLodTools
+
+      - name: Check out code with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Initialize and Update Git Submodules
+        run: |
+          git submodule update --init --recursive
+
+      - name: Set up Python Virtual Environment and Install Python Dependencies
+        run: |
+          python3 -m venv venv
+          . venv/bin/activate
+          if [ -f "requirements.txt" ]; then
+            pip install --upgrade pip
+            pip install --upgrade setuptools
+            pip install --upgrade wheel
+            pip install pybind11
+            pip install build
+            pip install -r requirements.txt
+          fi
+
+      - name: Get Blender Version from Installed Module
+        id: get_blender_version
+        run: |
+          . venv/bin/activate
+          if pip show bpy > /dev/null 2>&1; then
+            BLENDER_VERSION=$(pip show bpy | grep -Po '(?<=Version: )\d+(\.\d+)+')
+            echo "BLENDER_VERSION=$BLENDER_VERSION" >> $GITHUB_ENV
+          else
+            echo "bpy module not found in the virtual environment. Please ensure it is installed."
+            exit 1
+          fi
+
+      - name: Build and Install Python Modules in enviro_lod_tools/external
+        run: |
+          . venv/bin/activate
+          cd enviro_lod_tools/external
+          for dir in */ ; do
+            if [ -f "$dir/pyproject.toml" ]; then
+              echo "Building Python module in $dir"
+              cd "$dir"
+              python3 -m build
+              pip install dist/*.whl
+              cd ..
+            fi
+          done
+
+      - name: Clean Up Unnecessary Files in enviro_lod_tools/external
+        run: |
+          cd enviro_lod_tools/external
+          # Remove all files inside subdirectories but keep top-level directories
+          find . -mindepth 2 -type f -exec rm -f {} \; || true
+          
+          # Remove all empty directories
+          find . -mindepth 2 -type d -exec rm -rf {} \; || true
+          cd ../..
+
+      - name: Move Installed Modules Back to enviro_lod_tools/external
+        run: |
+          # Copy all files and directories starting with "pyfqmr" or "xatlas" ignoring version numbers
+          cp -r venv/lib/python3.10/site-packages/pyfqmr* enviro_lod_tools/external/
+          cp -r venv/lib/python3.10/site-packages/xatlas* enviro_lod_tools/external/
+          
+          # Clean up the temporary installation
+          rm -rf temp_installation
+
+      - name: Get Tag Name
+        id: get_tag
+        shell: bash
+        run: |
+          TAG=$(git describe --tags --exact-match)
+          echo "TAGS: $TAG"
+          if [ -z "$TAG" ]; then
+            echo "No tags on this commit."
+            echo "TAG=" >> $GITHUB_ENV
+          else
+            echo "Found tag: $TAG"
+            echo "TAG=$TAG" >> $GITHUB_ENV
+          fi
+
+      - name: Exit if No Tag
+        if: env.TAG == ''
+        run: |
+          echo "No valid tag found on this commit. Exiting."
+          exit 0
+
+      - name: Cleanup and Prepare for Zipping
+        if: env.TAG != ''
+        run: |
+          cd enviro_lod_tools
+          # Deactivate the virtual environment (if active)
+          deactivate || true  # Avoid error if already inactive
+          # Remove unnecessary files and directories
+          rm -rf __pycache__
+          rm -rf ../.github
+          rm -rf ../venv
+          rm -rf ../__pycache__
+          cd ..
+
+      - name: Create enviro_lod_tools_plugin_${{ env.TAG }}.zip
+        if: env.TAG != ''
+        run: |
+          cd enviro_lod_tools
+          zip -r ../enviro_lod_tools_plugin_${{ env.TAG }}_${{ env.BLENDER_VERSION }}_${{ env.PLATFORM }}.zip .
+
+      - name: Create enviro_lod_tools_gui_${{ env.TAG }}.zip
+        if: env.TAG != ''
+        run: |
+          cd enviro_lod_tools
+          cd ..
+          zip -r enviro_lod_tools_gui_${{ env.TAG }}_${{ env.BLENDER_VERSION }}_${{ env.PLATFORM }}.zip . -x ".git/*" -x "*.zip"
+
+      - name: Check if Release Exists
+        id: release_check
+        shell: bash
+        run: |
+          if gh release view ${{ env.TAG }} > /dev/null 2>&1; then
+            echo "release_exists=true" >> $GITHUB_ENV
+          else
+            echo "release_exists=false" >> $GITHUB_ENV
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release
+        if: env.release_exists == 'false' && env.TAG != ''
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ env.TAG }}
+          release_name: Release ${{ env.TAG }}
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Upload Plugin Zip to Release
+        if: env.TAG != ''
+        run: |
+          gh release upload ${{ env.TAG }} enviro_lod_tools_plugin_${{ env.TAG }}_${{ env.BLENDER_VERSION }}_${{ env.PLATFORM }}.zip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload GUI Zip to Release
+        if: env.TAG != ''
+        run: |
+          gh release upload ${{ env.TAG }} enviro_lod_tools_gui_${{ env.TAG }}_${{ env.BLENDER_VERSION }}_${{ env.PLATFORM }}.zip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

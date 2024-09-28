@@ -1,17 +1,16 @@
-import ensurepip
+import sys
 
 import bpy
 
-from .ds_consts import CLEANUP_IDNAME, CLEANUP_LABEL, CLEANUP_PANEL_LABEL, CLEANUP_PANEL_IDNAME, PYFQMR_MODULE_NAME
-from .ds_utils import (decimate_with_pyqmfr, keep_largest_component, clean_mesh_geometry,
-                       ensure_package_installed, uninstall_package, resolve_bmesh)
+from .ds_consts import CLEANUP_IDNAME, CLEANUP_LABEL, CLEANUP_PANEL_LABEL, CLEANUP_PANEL_IDNAME, EXTERNAL_FOLDER
+from .ds_utils import decimate_with_pyqmfr, keep_largest_component, clean_mesh_geometry, resolve_bmesh
 
 ENV_IS_BLENDER = bpy.app.binary_path != ""
 
 bl_info = {
     "name": "Cleanup Tool",
     "author": "Nico Breycha",
-    "version": (0, 0, 3),
+    "version": (0, 0, 4),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "A quick pass on cleaning the meshes geometry",
@@ -103,11 +102,7 @@ classes = (MESH_OT_clean_mesh, VIEW3D_PT_clean_mesh)
 
 def register():
     if ENV_IS_BLENDER:
-        # Ensure pip is available
-        ensurepip.bootstrap()
-
-        # Run the installation check
-        ensure_package_installed(PYFQMR_MODULE_NAME)
+        sys.path.append(EXTERNAL_FOLDER)
 
     from bpy.utils import register_class
 
@@ -134,14 +129,6 @@ def unregister():
         del bpy.types.Scene.boundary_length
     if hasattr(bpy.types, "merge_threshold"):
         del bpy.types.Scene.merge_threshold
-
-    if ENV_IS_BLENDER:
-        # Ensure pip is available
-        ensurepip.bootstrap()
-        print("UNINSTALLING PYFQMR")
-        # Uninstall xatlas
-        uninstall_package(PYFQMR_MODULE_NAME)
-
 
 
 if __name__ == "__main__":

@@ -1,9 +1,10 @@
 import os
 import sys
 import time
+import importlib.util
 from importlib.metadata import distribution, PackageNotFoundError
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton,
@@ -11,11 +12,12 @@ from PySide6.QtWidgets import (
     QMessageBox, QGroupBox, QHBoxLayout, QFrame, QLineEdit, QCheckBox
 )
 
-from enviro_lod_tools.addons.ds_utils import launch_operator_by_name, install_local_package
+from enviro_lod_tools.addons.ds_utils import launch_operator_by_name
 from enviro_lod_tools.addons.ds_consts import COMB_IDNAME, EXTERNAL_FOLDER
 
 import deploy
 
+sys.path.append(EXTERNAL_FOLDER)
 
 SCRIPT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__)))
 PLUGIN_BASENAME = "enviro_lod_tools"
@@ -42,27 +44,6 @@ def calculate_polycount(file_path):
             if line.startswith("f "):
                 polycount += 1
     return polycount
-
-
-class ModuleInstallerThread(QThread):
-    installation_complete = Signal(str, bool)  # module_name, success
-
-    def __init__(self, module_name):
-        super().__init__()
-        self.module_name = module_name
-
-    def run(self):
-        # Install the module
-        success = False
-        try:
-            install_local_package(self.module_name)
-            success = True
-        except Exception as e:
-            print(f"Error installing {self.module_name}: {e}")
-            success = False
-        # Emit signal that installation is complete
-        self.installation_complete.emit(self.module_name, success)
-
 
 
 class ModelProcessorGUI(QWidget):
@@ -275,49 +256,41 @@ class ModelProcessorGUI(QWidget):
         for module in REQUIERED_MODULES:
             self.check_module(module)
 
-
     def check_module(self, module_name):
         """
-        Check if a given module is installed and update the corresponding label.
+        Check if a given module is installed or available in sys.path and update the corresponding label.
 
         :param module_name: The name of the module to check.
         :type module_name: str
         :returns: True if the module is found, False otherwise.
         :rtype: bool
-        :raises PackageNotFoundError: If the module is not found.
-        :raises Exception: For any other issues that arise during the check.
+        :raises Exception: For any issues that arise during the check.
         """
         label_name = module_name + "_found_label"
         try:
-            # Attempt to get the distribution information directly using importlib.metadata
-            dist = distribution(module_name)
-            version = dist.version
-            getattr(self, label_name).setText(f"{module_name} {version}")
-            getattr(self, label_name).setStyleSheet("color: green;")
-            self.module_statuses[module_name] = "installed"
-            return True
-        except PackageNotFoundError:
-            module_dirs = [f for f in os.listdir(EXTERNAL_FOLDER) if os.path.isdir(os.path.join(EXTERNAL_FOLDER, f))]
-            if module_name in module_dirs and module_name not in self.module_installers:
-                # Start the module installer thread
-                getattr(self, label_name).setText(f"{module_name} installing...")
-                getattr(self, label_name).setStyleSheet("color: orange;")
+            # Attempt to find the module specification
+            module_spec = importlib.util.find_spec(module_name)
+            if module_spec is not None:
+                # Module is available in sys.path
+                try:
+                    # Try to get distribution information from installed package metadata
+                    version = distribution(module_name).version
+                except PackageNotFoundError:
+                    # If distribution info is not available, attempt to get version from the module's __version__ attribute
+                    module = importlib.import_module(module_name)
+                    version = getattr(module, "__version__", None)
 
-                installer_thread = ModuleInstallerThread(module_name)
-                installer_thread.installation_complete.connect(self.on_module_installation_complete)
-                installer_thread.start()
+                    # Fallback: Try to read version from a common version file or attribute in __init__.py
+                    if version is None:
+                        version = "undefined"
 
-                self.module_installers[module_name] = installer_thread
-                self.module_statuses[module_name] = "installing"
-
-                # Return False for now, will update when installation completes
-                return False
-
-            # Handle the case where the package is not found
-            getattr(self, label_name).setText(f"{module_name} not found")
-            getattr(self, label_name).setStyleSheet("color: red;")
-            self.module_statuses[module_name] = "not found"
-            return False
+                getattr(self, label_name).setText(f"{module_name} {version}")
+                getattr(self, label_name).setStyleSheet("color: green;")
+                self.module_statuses[module_name] = "installed"
+                return True
+            else:
+                # Module spec not found, proceed to check external folder
+                raise ModuleNotFoundError(f"No module named '{module_name}'")
         except Exception as e:
             # General exception handling for any other issues that arise
             getattr(self, label_name).setText("Error checking module")
@@ -565,7 +538,7 @@ class ModelProcessorGUI(QWidget):
                                 f"Processing completed in {end_time - start_time:.2f} seconds.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = ModelProcessorGUI()
     window.show()

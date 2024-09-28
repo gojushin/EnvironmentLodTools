@@ -1,12 +1,16 @@
+import sys
+
 import bpy
 
-from .ds_consts import LOD_IDNAME, LOD_LABEL, LOD_PANEL_IDNAME, LOD_PANEL_LABEL
+from .ds_consts import LOD_IDNAME, LOD_LABEL, LOD_PANEL_IDNAME, LOD_PANEL_LABEL, EXTERNAL_FOLDER
 from .ds_utils import delete_loose_geometry, decimate_with_pyqmfr, clean_mesh_geometry
+
+ENV_IS_BLENDER = bpy.app.binary_path != ""
 
 bl_info = {
     "name": "LOD Generator",
     "author": "Nico Breycha",
-    "version": (0, 0, 6),
+    "version": (0, 0, 7),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Generates levels of detail (LODs) for selected mesh objects.",
@@ -174,6 +178,9 @@ classes = (MESH_OT_lod_generator, VIEW3D_PT_lod_generator)
 
 
 def register():
+    if ENV_IS_BLENDER:
+        sys.path.append(EXTERNAL_FOLDER)
+
     from bpy.utils import register_class
 
     for cls in classes:

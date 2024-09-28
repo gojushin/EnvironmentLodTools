@@ -21,15 +21,13 @@ https://github.com/TylerGubala/blenderpy/issues/23
 """
 
 import sys
-import ensurepip
 import multiprocessing
 
 import numpy as np
 import bpy
 import bmesh
 
-from .ds_consts import UNWRAP_IDNAME, UNWRAP_LABEL, UNWRAP_PANEL_LABEL, UNWRAP_PANEL_IDNAME, XATLAS_MODULE_NAME
-from .ds_utils import ensure_package_installed, uninstall_package
+from .ds_consts import UNWRAP_IDNAME, UNWRAP_LABEL, UNWRAP_PANEL_LABEL, UNWRAP_PANEL_IDNAME, EXTERNAL_FOLDER
 
 
 ENV_IS_BLENDER = bpy.app.binary_path != ""
@@ -37,7 +35,7 @@ ENV_IS_BLENDER = bpy.app.binary_path != ""
 bl_info = {
     "name": "XAtlas Unwrapper",
     "author": "Nico Breycha",
-    "version": (0, 0, 5),
+    "version": (0, 0, 6),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Unwraps the model using xatals.",
@@ -249,11 +247,8 @@ classes = (MESH_OT_unwrap_xatlas, VIEW3D_PT_unwrap_xatlas)
 
 def register():
     if ENV_IS_BLENDER:
-        # Ensure pip is available
-        ensurepip.bootstrap()
-
-        # Run the installation check
-        ensure_package_installed(XATLAS_MODULE_NAME)
+        sys.path.append(EXTERNAL_FOLDER)
+        import xatlas
 
     from bpy.utils import register_class
 
@@ -268,11 +263,7 @@ def unregister():
         unregister_class(cls)
 
     if ENV_IS_BLENDER:
-        # Ensure pip is available
-        ensurepip.bootstrap()
-        print("UNINSTALLING XATALAS")
-        # Uninstall xatlas
-        uninstall_package(XATLAS_MODULE_NAME)
+        return
 
 
 if __name__ == "__main__":
