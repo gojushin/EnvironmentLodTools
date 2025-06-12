@@ -1,0 +1,81 @@
+name: Build Plugins
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-plugins:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install wheel
+
+      - name: Get tag name
+        id: get_tag
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+          echo "Detected tag: $TAG"
+
+      - name: Install Blender
+        run: |
+          # Download and install Blender 4.4
+          wget https://download.blender.org/release/Blender4.4/blender-4.4.0-linux-x64.tar.xz
+          tar -xf blender-4.4.0-linux-x64.tar.xz
+          mv blender-4.4.0-linux-x64 blender
+          
+      - name: Make build script executable
+        run: chmod +x build.sh
+
+      - name: Build Blender extensions
+        run: ./build.sh build_plugins --blender ./blender/blender
+
+      - name: Rename plugins with version tag
+        run: |
+          echo "=== Original plugin files ==="
+          ls -la *.zip || echo "No zip files in root"
+
+          echo "=== Renaming plugins to include tag ${{ steps.get_tag.outputs.TAG }} ==="
+          for file in *.zip; do
+            if [[ -f "$file" ]]; then
+              # Extract the base name and platform suffix
+              if [[ "$file" =~ (.+)_(windows_x64|macos_arm64|linux_x64)\.zip$ ]]; then
+                base_name="${BASH_REMATCH[1]}"
+                platform_suffix="${BASH_REMATCH[2]}"
+                new_name="${base_name}_${{ steps.get_tag.outputs.TAG }}_${platform_suffix}.zip"
+
+                echo "Renaming: $file -> $new_name"
+                mv "$file" "$new_name"
+              else
+                echo "Warning: $file doesn't match expected pattern, keeping original name"
+              fi
+            fi
+          done
+
+      - name: List built extensions
+        run: |
+          echo "=== Built extensions ==="
+          ls -la *.zip || echo "No zip files in root"
+
+      - name: Upload plugin artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugins
+          path: "*.zip"
+          retention-days: 1

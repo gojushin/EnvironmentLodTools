@@ -44,6 +44,9 @@ nosetests.xml
 coverage.xml
 
 # Distribution / packaging
+plugin_src/enviro_lod_tools/wheels/*
+python_embed.zip
+python_embed/
 .Python
 build/
 develop-eggs/
@@ -59,6 +62,8 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
+*.exe
+*.zip
 
 # Installer logs
 pip-log.txt
@@ -81,9 +86,8 @@ docs/_build/
 .dmypy.json
 dmypy.json
 
-# Extension
-
-enviro_lod_tools.zip
-experimental/
+# Extension / Local Dev
+*.bat
+plugin_src/wheels/*.whl
 
 # End of template
