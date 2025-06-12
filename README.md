@@ -1,39 +1,40 @@
 # Environment LOD Tools
 
-Blender 4.0.0
+[![Blender Plugins](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/build-plugins.yml/badge.svg)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/build-plugins.yml)
+[![Standalone](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/build-release.yml/badge.svg)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/build-release.yml)
 
-[![Linux Build/Release (Python 3.10)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/deploy_zip_files_3_10_linux.yml/badge.svg)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/deploy_zip_files_3_10_linux.yml)
-[![Windows Build/Release (Python 3.10)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/deploy_zip_files_3_10_win.yml/badge.svg)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/deploy_zip_files_3_10_win.yml)
+<p align="center">
+  <img width="256" height="256" src="https://raw.githubusercontent.com/gojushin/EnvironmentLodTools/main/docs/resources/icon.svg" alt="Logo">
+</p>
 
-Blender 4.1.0 and above
-
-[![Linux Build/Release (Python 3.11)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/deploy_zip_files_3_11_linux.yml/badge.svg)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/deploy_zip_files_3_11_linux.yml)
-[![Windows Build/Release (Python 3.11)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/deploy_zip_files_3_11_win.yml/badge.svg)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/deploy_zip_files_3_11_win.yml)
+This is a collection of plugins for [Blender](https://www.blender.org/) (v. 4.2.0 and above).
+The plugins are designed to help with the creation of environment levels of detail (LODs) for terrestrial photogrammetry models.
+(Models of Landscapes, Cities, and other "flat" structures).
 
 <p align="center">
   <img width="960" height="410" src="https://raw.githubusercontent.com/gojushin/EnvironmentLodTools/main/docs/resources/enviro_lod_tools_example.jpg" alt="LOD Example logo">
 </p>
 
-This is a collection of plugins for [Blender](https://www.blender.org/) (v. 4.0.0 and above).
-The plugins are designed to help with the creation of environment levels of detail (LODs) for terrestrial photogrammetry models.
-(Models of Landscapes, Cities, and other "flat" structures).
-
 The tool is split into several single plugins, that can be used independently of each other.
 There is also a combined plugin that can load a model from the file system and generate LODs for it, without actively rendering it to the viewport.
 **This is essential for source files that are too massive to display in the viewport.**
+
+**Blender Plugins** are available for `Windows`, `Linux` and `Mac (experimental)`.
+ 
+For Windows there is also a self-contained, zero-config GUI application available.
 
 ### Features
 
 - **Cleanup**: Cleans/Preprocesses the mesh for use in the LOD pipeline. All mesh operations are done using the BMesh framework to ensure performance. [Pyfqmr](https://github.com/Kramer84/pyfqmr-Fast-Quadric-Mesh-Reduction) is used for mesh reduction.
 
 
-- **Mesh Slicer**: Cuts a mesh into a user-defined amount of square slices. (This reimplements Blenders Bisect logic in a way that does not require to duplicate the mesh in order to keep both halfs)
+- **Mesh Slicer**: Cuts a mesh into a user-defined amount of square slices. (This reimplements Blenders Bisect logic in a way that does not require to duplicate the mesh in order to keep both half's)
 
 
 - **LOD Pipeline**: Generates the levels of detail (LODs) for all the selections using [pyfqmr](https://github.com/Kramer84/pyfqmr-Fast-Quadric-Mesh-Reduction) again. The LOD generation retains the borders of the highest LOD for flawless LOD transitions of individual modules.
 
 
-- **XAtlas Unwrapper**: Unwraps the model using the [xatlas-python](https://github.com/mworchel/xatlas-python) bindings.
+- **XAtlas Unwrapper**: Unwraps the model using the [xatlas-python](https://github.com/mworchel/xatlas-python) bindings. Utilizes multiprocessing to speed up the unwrapping of multiple meshes significantly.
 
 
 - **Baker**: Transfers the base color of a defined mesh onto one or multiple selected meshes. Blender is used as the baking framework.
@@ -47,34 +48,95 @@ There is also a combined plugin that can load a model from the file system and g
 
 ## GUI
 EnvironmentLodTools can also be used with a "standalone" PySide6 based GUI.
-It exposes the exact same parameters, but uses the users local Python install, with Blender as a module, instead of Blenders Embedded Python.
+It exposes the exact same parameters, but uses a small C++ Launcher targeting an embedded Python install, with Blender as a module.
 
 To use the GUI do the following:
-1. Download the entire `source code` from the [latest release](https://github.com/gojushin/EnvironmentLodTools/releases).
-2. Open the command prompt.
-3. Run `pip install -r requirnments.txt` in the directory of the plugin.
-4. Start the GUI by executing `enviro_tools_gui.py`
-
-Note: When starting the GUI for the first time, it will take a few moments to build the python modules.
+1. Download the `enviro_gui[...].zip` from the [latest release](https://github.com/gojushin/EnvironmentLodTools/releases).
+2. Run the contained .exe file.
 
 ## Plugin
 To install the plugins, follow these steps:
 
-1. Download the [latest release](https://github.com/gojushin/EnvironmentLodTool/releases/latest) from GitHub.
-2. In Blender, go to `Edit` -> `Preferences` -> `Add-ons` and click on the `Install` button.
+1. Download the [latest release](https://github.com/gojushin/EnvironmentLodTools/releases/latest) from GitHub.
+2. In Blender, go to `Edit` -> `Preferences` -> `Add-ons` and click on the `Install from lokal disk` hidden in the submenu on the top right.
 3. Select the .zip file from the download folder.
-4. Enable the plugins by checking the plugins checkbox. 
+4. Enable the plugins by checking the plugins checkbox.
+5. Once installed, the plugins can be accessed through the `Tool` and `Tools` panel.
 
-*Note: Enabling the plugins for the first time will take a few moments since two python modules will be built in place in Blenders Python install.*
+### Building 
 
-### Usage
+#### Using the provided scripts
 
-Once installed, the plugins can be accessed through the `Tool` and `Tools` panel.
+- Run `build.sh` using a applicable shell (i.e. GitShell, MinGW64, MSYS2, etc...)
+> [!NOTE]  
+> **build.sh** takes two additional _optional_ arguments:
+> 
+> `--blender` (which lets you define the fielpath to the blender installation to use for plugin building.)
+> 
+> `--python-version` (which lets you define the python version for building. i.e.: `3.11.9`)
 
-To use the GUI, download the source code and execute the `enviro_tools_gui.py` file.
+#### Building from scratch
 
-_Note: Since Blender is non-thread safe by nature, the GUI will currently freeze upon starting the pipeline.
-You can track the progress in the CLI._
+- Download the correct wheels [pyfqmr](https://pypi.org/project/pyfqmr/#files) and [xatlas](https://pypi.org/project/xatlas/#files) for your correct platform and python version an place them in `.plugin_src/wheels`
+- Add the path(s) to the wheels to the blender manifest at `.plugin_src/blender_manifest.toml`
+- Ensure you have Blender installed.
+- Build the Plugin using Blenders build command:
+  ```shell
+  blender --command extension build
+  ```
+   See also: [Blender Docs](https://docs.blender.org/manual/en/latest/advanced/extensions/getting_started.html)
+
+
+- Ensure the plugins name has the correct naming depending on your target platform:
+  - Win: `windows_x64.zip`
+  - OSX: `macos_arm64.zip`
+  - Linux: `linux_x64.zip`
+
+
+- Download the desired [embeddable python package](https://www.python.org/downloads/windows/).
+- Unpack it to `.python_embed/`, unless you change the path in the `launcher.cpp`.
+- Enable Site Support by either using Powershell or Bash. Do this by running one of the following commands inside the directory where there embedded python exectuable lives.
+
+  ```powershell
+  -Command "(Get-Content python*._pth) -replace '^#import site', 'import site' | Set-Content python*._pth"
+  ```
+  
+  or
+  
+  ```bash
+  sed -i 's/^#import site/import site/' python*._pth
+  ```
+
+- Install pip into the embeddable Python:
+  - Download get-pip.py from [here](https://bootstrap.pypa.io/pip/get-pip.py).
+  - Navigate to the directory the embeddable `python.exe` is located, place the downloaded file here and run:
+    ```shell
+    python.exe get-pip.py
+    ```
+- Using the embeddable Python Pip install the [Blender as a module](https://pypi.org/project/bpy/) and [PySide](https://pypi.org/project/PySide6/)
+  ```shell
+  python.exe -m pip install bpy
+  python.exe -m pip install PySide6
+  ```
+
+- Build the launcher using CMake (We are using MinGW, but you can use any Compiler you please):
+  ``` 
+  cmake -G "MinGW Makefiles" ..
+  cmake --build .
+  ```
+  
+- Ensure the folder structure looks as follows:
+  ```
+  📁 root
+  ├── 📄 launcher.exe
+  ├── 📄 enviro_tools_gui.py
+  ├── 📄 styles.qss (optional)
+  ├── 📄 blender_plugin_windows_x64.zip
+  ├── 📁 python_embed/
+  │   └── 📄 ...
+  └── 📁 plugin_src/
+      └── 📄 ...
+  ```
 
 ### Contributing
 
@@ -86,7 +148,7 @@ The code is licensed under the [GPLv3 License](LICENSE).
 
 ### Credits
 
-This project was created by [Nico Breycha](https://github.com/gojushin).
+This project was originally created by [Nico Breycha](https://github.com/gojushin) ([High Vision](https://high-vision.de)) for the [Deine Stadt](https://deinestadt.science/) project.
 
 3rd party libraries used in this project are licensed under their own licenses.
 - [xatlas-python](https://github.com/mworchel/xatlas-python) bindings, licensed under the [MIT License](https://github.com/mworchel/xatlas-python/blob/master/LICENSE).
@@ -101,3 +163,7 @@ This project was created by [Nico Breycha](https://github.com/gojushin).
 
 
 - [Pyside6](https://pypi.org/project/PySide6/), licensed under the [LGPLv3/GPLv3](https://github.com/pyside6/pyside6/blob/master/LICENSE)
+
+### Older Versions
+
+As of June 2025 I no longer support Blender Versions 4.1 and below. The latest release for these versions can be found [here](https://github.com/gojushin/EnvironmentLodTools/releases/tag/0.0.55-pre).
