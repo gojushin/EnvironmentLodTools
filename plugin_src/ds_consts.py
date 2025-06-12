@@ -1,5 +1,3 @@
-import os.path
-
 CLEANUP_IDNAME = "mesh.clean_mesh_operator"
 CLEANUP_LABEL = "Clean selection"
 CLEANUP_PANEL_IDNAME = "MESH_PT_clean"
