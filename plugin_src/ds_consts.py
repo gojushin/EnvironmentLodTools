@@ -31,11 +31,6 @@ COMB_LABEL = "Run Pipeline"
 COMB_PANEL_IDNAME = "MESH_PT_terrestrial_lod"
 COMB_PANEL_LABEL = "Combined Pipeline"
 
-EXTERNAL_FOLDER = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "external"))
-
-XATLAS_MODULE_NAME = "xatlas"
-PYFQMR_MODULE_NAME = "pyfqmr"
-
 ASCII_ART = {
 "CLEANUP":
 """

@@ -1,17 +1,14 @@
-import sys
-
 import bpy
 
-from .ds_consts import CLEANUP_IDNAME, CLEANUP_LABEL, CLEANUP_PANEL_LABEL, CLEANUP_PANEL_IDNAME, EXTERNAL_FOLDER
+from .ds_consts import CLEANUP_IDNAME, CLEANUP_LABEL, CLEANUP_PANEL_LABEL, CLEANUP_PANEL_IDNAME
 from .ds_utils import decimate_with_pyqmfr, keep_largest_component, clean_mesh_geometry, resolve_bmesh
 
-ENV_IS_BLENDER = bpy.app.binary_path != ""
 
 bl_info = {
     "name": "Cleanup Tool",
     "author": "Nico Breycha",
     "version": (0, 0, 4),
-    "blender": (4, 0, 0),
+    "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "A quick pass on cleaning the meshes geometry",
     "category": "Object",
@@ -101,9 +98,6 @@ classes = (MESH_OT_clean_mesh, VIEW3D_PT_clean_mesh)
 
 
 def register():
-    if ENV_IS_BLENDER:
-        sys.path.append(EXTERNAL_FOLDER)
-
     from bpy.utils import register_class
 
     for cls in classes:

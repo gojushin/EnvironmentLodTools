@@ -15,7 +15,7 @@ bl_info = {
     "name": "Automated LOD Generation Tool",
     "author": "Nico Breycha",
     "version": (0, 0, 5),
-    "blender": (4, 0, 0),
+    "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Combines the Operator from all the other plugins.",
     "category": "Object",

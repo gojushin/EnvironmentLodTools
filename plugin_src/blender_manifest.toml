@@ -1,0 +1,27 @@
+schema_version = "1.0.0"
+
+id = "enviro_lod_tools"
+version = "0.1.0"
+name = "Environment LOD Tools"
+tagline = "A Toolset for editing massive terrestial photogrammetry models"
+maintainer = "Nico Breycha <nb@high-vision.de>"
+type = "add-on"
+website = "https://github.com/gojushin/EnvironmentLodTools"
+tags = ["Object"]
+blender_version_min = "4.2.0"
+license = ["SPDX:GPL-3.0-or-later", ]
+platforms = ["windows-x64", "macos-arm64", "linux-x64"]
+wheels = [
+    "./wheels/pyfqmr-0.2.0-cp311-cp311-macosx_11_0_arm64.whl",
+    "./wheels/pyfqmr-0.2.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+    "./wheels/pyfqmr-0.2.0-cp311-cp311-win_amd64.whl",
+    "./wheels/xatlas-0.0.10-cp311-cp311-macosx_11_0_arm64.whl",
+    "./wheels/xatlas-0.0.9-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+    "./wheels/xatlas-0.0.9-cp311-cp311-win_amd64.whl"
+]
+paths_exclude_pattern = [
+    "__pycache__/",
+    ".venv"]
+
+[permissions]
+files = "Import/Export .obj files from/to disk"

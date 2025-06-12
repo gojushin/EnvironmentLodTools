@@ -11,7 +11,7 @@ bl_info = {
     "name": "Baker Plugin",
     "author": "Nico Breycha",
     "version": (0, 0, 4),
-    "blender": (4, 0, 0),
+    "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Bakes the base color of a defined mesh onto one or multiple selected meshes.",
     "category": "Object",

@@ -6,7 +6,7 @@ import bmesh
 from bmesh.utils import edge_split, face_split
 from mathutils import Vector
 
-from enviro_lod_tools.addons.ds_utils import clean_mesh_geometry
+from .ds_utils import clean_mesh_geometry
 from .ds_consts import SLICE_IDNAME, SLICE_LABEL, SLICE_PANEL_LABEL, SLICE_PANEL_IDNAME
 
 X_VEC = Vector((1, 0, 0))  # Vec into X Direction
@@ -16,7 +16,7 @@ bl_info = {
     "name": "Mesh Slicer",
     "author": "Nico Breycha",
     "version": (0, 1, 3),
-    "blender": (4, 0, 0),
+    "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Cut's a Mesh into a user-defined amount of square slices, "
                    "by referencing the longest side of the AABB.",

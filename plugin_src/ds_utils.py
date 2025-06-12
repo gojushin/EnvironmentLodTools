@@ -1,14 +1,6 @@
-import sys
-import os
-import subprocess
 import math
-import importlib.util
 from functools import wraps
 
-import bpy
-import bmesh
-
-from .ds_consts import EXTERNAL_FOLDER
 
 # region Math
 
@@ -25,97 +17,6 @@ def cubic_ease_out(t):
 
 # endregion
 
-# region Package Management
-
-
-def is_package_installed(package_name):
-    """
-    Check if a package is installed.
-
-    :param package_name: The name of the package to check.
-    :type package_name: str
-    :return: True if the package is installed, False otherwise.
-    :rtype: bool
-    """
-    package_spec = importlib.util.find_spec(package_name)
-    return package_spec is not None
-
-
-def install_package(package_name):
-    """
-    Install a package.
-
-    :param package_name: The name of the package to install.
-    :type package_name: str
-    :return: None
-    """
-    python_executable = sys.executable
-    try:
-        # Execute the pip command to install the package
-        subprocess.check_call([python_executable, "-m", "pip", "install", package_name])
-        print(f"Successfully installed {package_name}")
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to install {package_name}: {e}")
-
-
-def ensure_package_installed(package_name):
-    """
-    Check if a package is installed, and if not, install it.
-
-    :param package_name: The name of the package to check and install.
-    :type package_name: str
-    :return: None
-    """
-    if not is_package_installed(package_name):
-        try:
-            print(f"{package_name} is not installed. Installing now...")
-            install_package(package_name)
-        except subprocess.CalledProcessError as e:
-            print(f"Failed to install {package_name}: {e}")
-            install_local_package(package_name)
-    else:
-        print(f"{package_name} is already installed.")
-
-
-def uninstall_package(package_name):
-    """
-    Uninstall a package.
-
-    :param package_name: The name of the package to uninstall.
-    :type package_name: str
-    :return: None
-    """
-    if package_name in sys.modules:
-        try:
-            subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "-y", package_name])
-            print(f"Successfully uninstalled {package_name}")
-        except subprocess.CalledProcessError as e:
-            print(f"Failed to uninstall {package_name}: {e}")
-
-
-def install_local_package(package_name):
-    """
-    Install a package from the external folder.
-
-    :param package_name: The name of the package to install.
-    :type package_name: str
-    :return: None
-    """
-    src_path = os.path.join(EXTERNAL_FOLDER, package_name)
-
-    python_executable = sys.executable
-    try:
-        # Check if the path exists
-        if os.path.exists(src_path):
-            subprocess.check_call([python_executable, "-m", "pip", "install", src_path])
-            print(f"Successfully installed {package_name} from local source")
-        else:
-            print(f"Source path {src_path} does not exist")
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to install {package_name} from local source: {e}")
-
-# endregion
-
 # region Blender Utility Functions
 
 def launch_operator_by_name(op_str):
@@ -125,6 +26,7 @@ def launch_operator_by_name(op_str):
     :type op_str: str
     :return: None
     """
+    import bpy
     try:
         category, operator_name = op_str.split(".")
         f = getattr(getattr(bpy.ops, category), operator_name)
@@ -144,6 +46,8 @@ def vertex_group_from_outer_boundary(obj):
     :returns: Name of the vertex group.
     :rtype: str
     """
+    import bpy
+    import bmesh
     # Ensure the object is active
     bpy.context.view_layer.objects.active = obj
 
@@ -211,6 +115,7 @@ def clear_scene():
     Clears the scene of all objects.
     :return: None
     """
+    import bpy
     # Switch to Object Mode if not in it
     if bpy.context.mode != "OBJECT":
         bpy.ops.object.mode_set(mode="OBJECT")
@@ -251,6 +156,7 @@ def set_cpu_rendering():
     Sets the CPU as the rendering device for Cycles.
     :return: None
     """
+    import bpy
     # Set the render engine to Cycles if it's not already set
     bpy.context.scene.render.engine = "CYCLES"
 
@@ -274,6 +180,7 @@ def set_gpu_rendering():
     Sets the GPU rendering engine to Cycles.
     :return: None
     """
+    import bpy
     # Set the render engine to Cycles if it's not already set
     bpy.context.scene.render.engine = "CYCLES"
 
@@ -337,6 +244,8 @@ def bmesh_wrapper(func):
     :return: A resolved bpy Object if return_bm is `False`, otherwise the BMesh data for further processing.
     :rtype: bpy.types.Object or bmesh.types.BMesh
     """
+    import bmesh
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         mesh_data = args[0]
@@ -410,6 +319,8 @@ def delete_loose_geometry(mesh_data, bm=None, remove_faces=True):
     :return: A resolved bpy Object if return_bm is `False`, otherwise the BMesh data for further processing.
     :rtype: bpy.types.Object or bmesh.types.BMesh
     """
+    import bmesh
+
     # Remove loose vertices (vertices not connected to any edge)
     loose_verts = [v for v in bm.verts if not v.link_edges]
     bmesh.ops.delete(bm, geom=loose_verts, context="VERTS")
@@ -444,6 +355,8 @@ def merge_meshes(mesh_data, additional_objs, bm=None):
     :return: A resolved bpy Object if return_bm is `False`, otherwise the BMesh data for further processing.
     :rtype: bpy.types.Object or bmesh.types.BMesh
     """
+    import bpy
+    import bmesh
     # Loop through additional objects and merge their meshes
     for additional_obj in additional_objs:
         # Create a new BMesh for the additional mesh
@@ -480,6 +393,8 @@ def keep_largest_component(mesh_data, bm=None):
     :return: A resolved bpy Object if return_bm is `False`, otherwise the BMesh data for further processing.
     :rtype: bpy.types.Object or bmesh.types.BMesh
     """
+    import bmesh
+
     # Find connected components
     verts = set(bm.verts)
     processed_verts = 0
@@ -526,6 +441,7 @@ def merge_doubles(mesh_data, merge_threshold, bm=None):
     :rtype: bpy.types.Object or bmesh.types.BMesh
     """
     # Remove doubles
+    import bmesh
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=merge_threshold)
     print(f"Merged vertices with a threshold of {merge_threshold}.")
     return bm
@@ -545,6 +461,7 @@ def clean_mesh_geometry(mesh_data, merge_threshold, bm=None):
     :return: A resolved bpy Object if return_bm is `False`, otherwise the BMesh data for further processing.
     :rtype: bpy.types.Object or bmesh.types.BMesh
     """
+    import bmesh
     def fill_holes(boundary_edges):
         """
         Fills holes in the BMesh by identifying boundary edge loops and creating faces.
@@ -635,6 +552,7 @@ def decimate_with_pyqmfr(mesh_data, target_face_count, bm=None, max_iterations=8
     :return: A resolved bpy Object if return_bm is `False`, otherwise the BMesh data for further processing.
     :rtype: bpy.types.Object or bmesh.types.BMesh
     """
+    import bmesh
     import numpy as np
     import pyfqmr
 
@@ -716,6 +634,7 @@ def simplify_flat_areas(mesh_data, target_face_count=1000, curvature_threshold=0
     :type vertex_group_name: str or None
     :return: None
     """
+    import bmesh
     # Get the vertex group that defines protected vertices, if any
     protected_vertices = set()
     if vertex_group_name and vertex_group_name in mesh_data.vertex_groups:
@@ -804,6 +723,7 @@ def decimate_object(mesh_data, target_ratio, iterations=5, vg_name=None, merge_t
     :return: The decimated Blender object.
     :rtype: bpy.types.Object
     """
+    import bpy
     bpy.context.view_layer.objects.active = mesh_data
 
     # Calc merge distance.
