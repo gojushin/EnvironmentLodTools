@@ -1,30 +1,34 @@
 import os
 import sys
 import time
-import importlib.util
-from importlib.metadata import distribution, PackageNotFoundError
+import platform
+import glob
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QTextCursor
+from PySide6.QtCore import Signal, Qt, QThread
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton,
     QFileDialog, QLabel, QSpinBox, QDoubleSpinBox, QComboBox,
-    QMessageBox, QGroupBox, QHBoxLayout, QFrame, QLineEdit, QCheckBox
+    QMessageBox, QGroupBox, QHBoxLayout, QFrame, QLineEdit, QCheckBox,
+    QPlainTextEdit, QSplitter
 )
 
-from enviro_lod_tools.addons.ds_utils import launch_operator_by_name
-from enviro_lod_tools.addons.ds_consts import COMB_IDNAME, EXTERNAL_FOLDER
+sys.path.insert(0, os.getcwd())
 
-import deploy
-
-sys.path.append(EXTERNAL_FOLDER)
+from plugin_src.ds_utils import launch_operator_by_name
+from plugin_src.ds_consts  import COMB_IDNAME
 
 SCRIPT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+PLUGIN_NAME_EXTENSION = "bl_ext"
+PLUGIN_REPO = "user_default"
 PLUGIN_BASENAME = "enviro_lod_tools"
-PLUGIN_FILE = os.path.join(SCRIPT_DIR, f"{PLUGIN_BASENAME}.zip")
-PLUGIN_DIR = os.path.join(SCRIPT_DIR, PLUGIN_BASENAME)
+FULL_PLUGIN_NAME = f"{PLUGIN_NAME_EXTENSION}.{PLUGIN_REPO}.{PLUGIN_BASENAME}"
 
-REQUIERED_MODULES = ("bpy", "numpy", "xatlas", "pyfqmr")
+PLUGIN_SUFFIXES = {
+    "Windows": "windows_x64.zip",
+    "Darwin": "macos_arm64.zip",
+    "Linux": "linux_x64.zip"
+}
 
 
 def calculate_polycount(file_path):
@@ -38,38 +42,160 @@ def calculate_polycount(file_path):
     if not os.path.isfile(file_path):
         return 0
 
-    polycount = 0
-    with open(file_path, "r") as file:
-        for line in file:
-            if line.startswith("f "):
-                polycount += 1
-    return polycount
+    with open(file_path, 'rb') as f:
+        content = f.read()
+        count = content.count(b'\nf ')
+        if content[:2] == b'f ':
+            count += 1
+        return count
 
 
-class ModelProcessorGUI(QWidget):
-    def __init__(self):
-        super().__init__()
+class ConsoleOutputWidget(QWidget):
+    """Console output widget with background thread for stdout/stderr capture."""
+    class ConsoleWorker(QThread):
+        output_signal = Signal(str)
+        error_signal = Signal(str)
 
-        # Styling
-        self.setWindowTitle("Environment LOD Tools")
-        self.resize(450, 600)
-        self.setMinimumWidth(450)
+        def run(self):
+            class ThreadedRedirector:
+                def __init__(self, emit_func):
+                    self.emit_func = emit_func
 
-        self.module_installers = {}
-        self.module_statuses = {}
+                def write(self, text):
+                    if text.strip():
+                        self.emit_func(text.rstrip())
 
-        self.setWindowIcon(QIcon("elt_icon.png"))
-        with open("style.qss", "r") as f:
-            _style = f.read()
-            app.setStyleSheet(_style)
+                def flush(self):
+                    pass
 
-        # Content
+            # Redirect stdout/stderr within the thread
+            sys.stdout = ThreadedRedirector(self.output_signal.emit)
+            sys.stderr = ThreadedRedirector(self.error_signal.emit)
+
+            # Keep thread alive
+            while True:
+                time.sleep(0.1)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.auto_scroll = True
+        self.capture_enabled = True
 
         layout = QVBoxLayout()
+        console_group = QGroupBox("Console Output")
+        console_layout = QVBoxLayout()
+
+        controls_layout = QHBoxLayout()
+        self.auto_scroll_cb = QCheckBox("Auto-scroll")
+        self.auto_scroll_cb.setChecked(self.auto_scroll)
+        self.auto_scroll_cb.toggled.connect(self.toggle_auto_scroll)
+
+        self.capture_cb = QCheckBox("Capture Console")
+        self.capture_cb.setChecked(self.capture_enabled)
+        self.capture_cb.toggled.connect(self.toggle_console_capture)
+
+        clear_btn = QPushButton("Clear")
+        clear_btn.setFixedWidth(80)
+        clear_btn.clicked.connect(self.clear_output)
+
+        controls_layout.addWidget(self.auto_scroll_cb)
+        controls_layout.addWidget(self.capture_cb)
+        controls_layout.addStretch()
+        controls_layout.addWidget(clear_btn)
+
+        self.console_text = QPlainTextEdit()
+        self.console_text.setReadOnly(True)
+        self.console_text.setMaximumBlockCount(10000)
+
+        console_layout.addLayout(controls_layout)
+        console_layout.addWidget(self.console_text)
+        console_group.setLayout(console_layout)
+        layout.addWidget(console_group)
+        self.setLayout(layout)
+
+        # Start threaded console capture
+        self.console_thread = self.ConsoleWorker()
+        self.console_thread.output_signal.connect(self.handle_stdout)
+        self.console_thread.error_signal.connect(self.handle_stderr)
+        self.console_thread.start()
+
+        # Initial setup
+        self.clear_output()
+        self.append_text(">>> Ready")
+
+    def toggle_auto_scroll(self, enabled):
+        self.auto_scroll = enabled
+
+    def toggle_console_capture(self, enabled):
+        self.capture_enabled = enabled
+        if enabled:
+            self.append_text(">>> Console capture enabled")
+        else:
+            self.append_text(">>> Console capture disabled")
+
+    def handle_stdout(self, text):
+        self.append_text(text, is_error=False)
+
+    def handle_stderr(self, text):
+        self.append_text(text, is_error=True)
+
+    def append_text(self, text, is_error=False):
+        cursor = self.console_text.textCursor()
+        cursor.movePosition(QTextCursor.End)
+
+        if is_error:
+            cursor.insertHtml(f'<span style="color: #f44747;">{text}</span><br>')
+        else:
+            cursor.insertText(text + "\n")
+
+        if self.auto_scroll:
+            self.console_text.verticalScrollBar().setValue(
+                self.console_text.verticalScrollBar().maximum()
+            )
+
+    def clear_output(self):
+        self.console_text.clear()
+
+    def closeEvent(self, event):
+        if self.console_thread and self.console_thread.isRunning():
+            self.console_thread.terminate()
+            self.console_thread.wait()
+        event.accept()
+
+class ModelProcessorGUI(QWidget):
+    def __init__(self, blender_plugin: str = None):
+        super().__init__()
+
+        self.blender_plugin = blender_plugin
+        # Styling
+        self.setWindowTitle("Environment LOD Tools")
+        self.resize(900, 600)
+        self.setMinimumWidth(800)
+
+        self.setWindowIcon(QIcon("icon.ico"))
+
+        try:
+            with open("style.qss", "r") as f:
+                _style = f.read()
+                app.setStyleSheet(_style)
+        except FileNotFoundError:
+            pass
+
+        # Create main layout
+        main_layout = QVBoxLayout()
+
+        # Create splitter to divide main controls and console horizontally
+        splitter = QSplitter(Qt.Horizontal)
+
+        # Create main controls widget
+        controls_widget = QWidget()
+        controls_layout = QVBoxLayout()
+        controls_widget.setLayout(controls_layout)
+
+        # Set minimum and default width for controls (settings) widget
+        controls_widget.setMinimumWidth(320)
 
         # IO Section
-
-        # IO Group Box
         io_group = QGroupBox("IO")
         io_layout = QVBoxLayout()
         io_group.setLayout(io_layout)
@@ -104,12 +230,12 @@ class ModelProcessorGUI(QWidget):
         # Export Path Selection
         export_path_layout = QHBoxLayout()
         self.export_path_line_edit = QLineEdit("No path selected")
-        export_path_btn = QPushButton("Select Export Path")
-        export_path_btn.setFixedWidth(175)
-        export_path_btn.clicked.connect(self.select_export_path)
+        self.export_path_btn = QPushButton("Select Export Path")
+        self.export_path_btn.setFixedWidth(175)
+        self.export_path_btn.clicked.connect(self.select_export_path)
         export_path_layout.addWidget(self.export_path_line_edit)
-        export_path_layout.addWidget(export_path_btn)
-        io_layout.addLayout(export_path_layout)  # Add the horizontal layout to the vertical layout
+        export_path_layout.addWidget(self.export_path_btn)
+        io_layout.addLayout(export_path_layout)
 
         # Cleanup Properties Section
         cleanup_group = QGroupBox("Cleanup Properties")
@@ -227,103 +353,31 @@ class ModelProcessorGUI(QWidget):
         start_btn = QPushButton("Start")
         start_btn.clicked.connect(self.start_pipeline)
 
-        module_found_layout = QHBoxLayout()
-        module_found_layout.setAlignment(Qt.AlignCenter)
+        # Add all groups to the controls layout
+        controls_layout.addWidget(io_group)
+        controls_layout.addWidget(cleanup_group)
+        controls_layout.addWidget(slice_group)
+        controls_layout.addWidget(lod_group)
+        controls_layout.addWidget(bake_group)
+        controls_layout.addWidget(start_btn)
 
-        self.numpy_found_label = QLabel("Checking...")
-        self.bpy_found_label = QLabel("Checking...")
-        self.xatlas_found_label = QLabel("Checking...")
-        self.pyfqmr_found_label = QLabel("Checking...")
-        module_found_layout.addWidget(self.numpy_found_label)
-        module_found_layout.addSpacing(20)
-        module_found_layout.addWidget(self.bpy_found_label)
-        module_found_layout.addSpacing(20)
-        module_found_layout.addWidget(self.xatlas_found_label)
-        module_found_layout.addSpacing(20)
-        module_found_layout.addWidget(self.pyfqmr_found_label)
+        # Create console output widget
+        self.console_widget = ConsoleOutputWidget()
 
-        # Add all groups to the main layout
-        layout.addWidget(io_group)
-        layout.addWidget(cleanup_group)
-        layout.addWidget(slice_group)
-        layout.addWidget(lod_group)
-        layout.addWidget(bake_group)
-        layout.addWidget(start_btn)
-        layout.addLayout(module_found_layout)
+        # Set minimum and default width for console widget
+        self.console_widget.setMinimumWidth(480)
 
-        self.setLayout(layout)
+        # Add both widgets to splitter
+        splitter.addWidget(controls_widget)
+        splitter.addWidget(self.console_widget)
 
-        for module in REQUIERED_MODULES:
-            self.check_module(module)
+        # Set initial splitter sizes (settings: 320, console: 560)
+        splitter.setSizes([320, 480])
 
-    def check_module(self, module_name):
-        """
-        Check if a given module is installed or available in sys.path and update the corresponding label.
+        # Add splitter to main layout
+        main_layout.addWidget(splitter)
 
-        :param module_name: The name of the module to check.
-        :type module_name: str
-        :returns: True if the module is found, False otherwise.
-        :rtype: bool
-        :raises Exception: For any issues that arise during the check.
-        """
-        label_name = module_name + "_found_label"
-        try:
-            # Attempt to find the module specification
-            module_spec = importlib.util.find_spec(module_name)
-            if module_spec is not None:
-                # Module is available in sys.path
-                try:
-                    # Try to get distribution information from installed package metadata
-                    version = distribution(module_name).version
-                except PackageNotFoundError:
-                    # If distribution info is not available, attempt to get version from the module's __version__ attribute
-                    module = importlib.import_module(module_name)
-                    version = getattr(module, "__version__", None)
-
-                    # Fallback: Try to read version from a common version file or attribute in __init__.py
-                    if version is None:
-                        version = "undefined"
-
-                getattr(self, label_name).setText(f"{module_name} {version}")
-                getattr(self, label_name).setStyleSheet("color: green;")
-                self.module_statuses[module_name] = "installed"
-                return True
-            else:
-                # Module spec not found, proceed to check external folder
-                raise ModuleNotFoundError(f"No module named '{module_name}'")
-        except Exception as e:
-            # General exception handling for any other issues that arise
-            getattr(self, label_name).setText("Error checking module")
-            getattr(self, label_name).setStyleSheet("color: red;")
-            self.module_statuses[module_name] = "error"
-            return False
-
-    def on_module_installation_complete(self, module_name, success):
-        """
-        Slot to handle module installation completion.
-
-        :param module_name: The name of the module that was installed.
-        :type module_name: str
-        :param success: True if installation was successful, False otherwise.
-        :type success: bool
-        """
-        # Remove the installer thread from the dictionary
-        if module_name in self.module_installers:
-            del self.module_installers[module_name]
-
-        label_name = module_name + "_found_label"
-
-        if success:
-            # Re-check the module to update the label
-            dist = distribution(module_name)
-            version = dist.version
-            getattr(self, label_name).setText(f"{module_name} {version}")
-            getattr(self, label_name).setStyleSheet("color: green;")
-            self.module_statuses[module_name] = 'installed'
-        else:
-            getattr(self, label_name).setText(f"{module_name} installation failed")
-            getattr(self, label_name).setStyleSheet("color: red;")
-            self.module_statuses[module_name] = 'error'
+        self.setLayout(main_layout)
 
     def select_highpoly_model(self):
         """Open a file dialog to select a high-poly model and update related UI elements."""
@@ -333,9 +387,11 @@ class ModelProcessorGUI(QWidget):
         if file_path:
             self.highpoly_model_line_edit.setText(file_path)
             self.update_polycount(file_path)
-            mtl_path = file_path.replace(".obj", ".mtl")
+            print(f"Selected highpoly model: {file_path}")
 
+            mtl_path = file_path.replace(".obj", ".mtl")
             if not os.path.exists(mtl_path):
+                print("Warning: No .mtl file found alongside the .obj file.")
                 QMessageBox.warning(self, "Warning", "No .mtl file found alongside the .obj file.")
 
             # Check texture references in .mtl file
@@ -348,6 +404,7 @@ class ModelProcessorGUI(QWidget):
         self.polycount_label.setText(f"Polycount: {str(polycount)}")
         self.initial_reduction_polycount.setRange(0, polycount)
         self.initial_reduction_polycount.setValue(polycount)
+        print(f"Polycount calculated: {polycount}")
 
     def check_texture_references(self, mtl_path, directory):
         """
@@ -377,6 +434,7 @@ class ModelProcessorGUI(QWidget):
             with open(mtl_path, "w") as file:
                 file.writelines(lines)
             change_report = "\n".join([f"{old} -> {new}" for old, new in changes])
+            print(f"Updated texture paths: {change_report}")
             QMessageBox.information(self, "Texture Paths Updated", f"Updated texture paths:\n{change_report}")
 
     @staticmethod
@@ -401,8 +459,28 @@ class ModelProcessorGUI(QWidget):
         directory = QFileDialog.getExistingDirectory(self, "Select Export Directory")
         if directory:
             self.export_path_line_edit.setText(directory)
+            print(f"Selected export path: {directory}")
             if os.listdir(directory):
+                print("Warning: Selected export folder is not empty.")
                 QMessageBox.warning(self, "Warning", "The selected export folder is not empty.")
+
+    def ensure_plugin(self):
+        import bpy
+        if FULL_PLUGIN_NAME in bpy.context.preferences.addons.keys():
+            if FULL_PLUGIN_NAME in bpy.context.preferences.addons:
+                return True
+            else:
+                bpy.ops.preferences.addon_enable(module=FULL_PLUGIN_NAME)
+                return FULL_PLUGIN_NAME in bpy.context.preferences.addons
+        else:
+            bpy.ops.extensions.package_install_files(filepath=self.blender_plugin,
+                                                 enable_on_install=True,
+                                                 repo=PLUGIN_REPO)
+            if FULL_PLUGIN_NAME in bpy.context.preferences.addons:
+                return True
+            else:
+                bpy.ops.preferences.addon_enable(module=FULL_PLUGIN_NAME)
+                return FULL_PLUGIN_NAME in bpy.context.preferences.addons
 
     def setup_blender(self, values):
         """
@@ -412,38 +490,15 @@ class ModelProcessorGUI(QWidget):
         :returns: None
         """
         import bpy
-
+        print("Creating new Blender scene...")
         # Create a new scene
         bpy.ops.wm.read_factory_settings(use_empty=True)
 
-        # Check if the plugin is installed
-        if PLUGIN_BASENAME not in bpy.context.preferences.addons.keys():
-            print(f"{PLUGIN_BASENAME} not installed. Attempting install.")
-            # Create a .zip file for the plugin if not already existing
-            if not os.path.isfile(PLUGIN_FILE):
-                deploy.zip_directory(PLUGIN_DIR)
+        if not self.ensure_plugin():
+            return False
 
-            if not os.path.isfile(PLUGIN_FILE):
-                QMessageBox.critical(self, "Error", "Failed to create plugin. Can NOT continue")
-                return
-
-            # Install the plugin
-            bpy.ops.preferences.addon_install(filepath=PLUGIN_FILE)
-        else:
-            print(f"{PLUGIN_BASENAME} already installed")
-
-        # Check if the plugin is enabled
-        if PLUGIN_BASENAME not in bpy.context.preferences.addons:
-            print(f"{PLUGIN_BASENAME} not enabled. Enabling...")
-            bpy.ops.preferences.addon_enable(module=PLUGIN_BASENAME)
-        else:
-            print(f"{PLUGIN_BASENAME} already enabled.")
-
-        if PLUGIN_BASENAME not in bpy.context.preferences.addons:
-            QMessageBox.critical(self, "Error", "Failed to enable plugin. Can NOT continue")
-            return
-
-        # Run the pipeline
+        print("Setting up Blender variables...")
+        # Setup all the variables.
         bpy.types.Scene.import_fp_comb = values["highpoly_model_path"]
         bpy.types.Scene.rot_correction_comb = values["rot_correction"]
         bpy.types.Scene.export_fp_comb = values["export_path"]
@@ -465,19 +520,16 @@ class ModelProcessorGUI(QWidget):
         bpy.data.scenes["Scene"].baker_settings_comb.save_path = values["export_path"]
         bpy.data.scenes["Scene"].baker_settings_comb.ray_distance = values["ray_distance"]
 
+        print("Blender setup complete.")
+        return True
+
     def start_pipeline(self):
         """Starts the pipeline with the current configuration values."""
         start_time = time.time()
-        if self.module_installers:
-            QMessageBox.warning(self, "Installation in Progress",
-                                "Please wait for module installations to complete before starting the pipeline.")
-            return
 
-        # Check if all modules are installed
-        if not all(status == "installed" for status in self.module_statuses.values()):
-            QMessageBox.critical(self, "Error", "Not all required modules are installed.\n"
-                                                "Please install the missing dependencies and try again.")
-            return
+        sys.stdout.write("="*50)
+        sys.stdout.write("Starting Environment LOD Tools Pipeline")
+        sys.stdout.write("="*50)
 
         highpoly_model_path = self.highpoly_model_line_edit.text()
         rot_correction = self.rotation_correction.currentText()
@@ -489,12 +541,18 @@ class ModelProcessorGUI(QWidget):
         export_path = self.export_path_line_edit.text()
 
         if not os.path.isfile(highpoly_model_path):
+            print(f"Error: Highpoly model file not found: {highpoly_model_path}")
             QMessageBox.critical(self, "Error", "Highpoly model file not found. Can NOT continue")
             return
 
         if not os.path.isdir(export_path):
+            print(f"Error: Export path not found: {export_path}")
             QMessageBox.critical(self, "Error", "Export path not found. Can NOT continue")
             return
+
+        print(f"Input Model: {highpoly_model_path}")
+        print(f"Export Path: {export_path}")
+        print(f"Rotation Correction: {rot_correction}")
 
         initial_reduction_polycount = self.initial_reduction_polycount.value()
         vertex_threshold = self.loose_comp_threshold.value()
@@ -507,6 +565,13 @@ class ModelProcessorGUI(QWidget):
         texture_resolution = int(self.texture_resolution.currentText())
         lower_res_by_lod = self.lower_res_by_lod.isChecked()
         ray_distance = self.ray_distance.value()
+
+        print(f"Initial Reduction Polycount: {initial_reduction_polycount}")
+        print(f"Number of Modules: {num_modules}")
+        print(f"Number of LODs: {num_lods}")
+        print(f"Reduction Percentage: {reduction_percentage}%")
+        print(f"Render Device: {render_device}")
+        print(f"Texture Resolution: {texture_resolution}")
 
         values = {
             "initial_reduction_polycount": initial_reduction_polycount,
@@ -525,21 +590,74 @@ class ModelProcessorGUI(QWidget):
             "rot_correction": rot_correction
         }
 
-        self.setup_blender(values)
+        # Enable console capture to catch Blender output
+        self.console_widget.capture_cb.setChecked(True)
+        print("Enabling console capture for Blender operations...")
+
+        print("Setting up Blender environment...")
+        if not self.setup_blender(values):
+            print("Error: Failed to set up Blender environment")
+            QMessageBox.warning(self, "Error", "Failed to set up Blender.")
+            return
 
         # Run the operators
+        print("Launching Blender operators...")
         launch_operator_by_name(COMB_IDNAME)
 
+        # Disable console capture
+        self.console_widget.capture_cb.setChecked(False)
+
         # Open the export folder
+        print(f"Opening export folder: {export_path}")
         os.startfile(export_path)
 
         end_time = time.time()
+        print("="*50)
+        print(f"Processing completed successfully in {end_time - start_time:.2f} seconds.")
+        print("="*50)
+
         QMessageBox.information(self, "Processing Done",
                                 f"Processing completed in {end_time - start_time:.2f} seconds.")
 
 
 if __name__ == "__main__":
+    import multiprocessing
+    multiprocessing.freeze_support()
+
+    plugin_to_load = None
+
+    try:
+        system = platform.system()
+        plugin_suffix = PLUGIN_SUFFIXES.get(system)
+
+        if not plugin_suffix:
+            raise FileNotFoundError("Platform is not supported.")
+
+        plugins = glob.glob(f"*{plugin_suffix}", root_dir=SCRIPT_DIR)
+
+        if not plugins:
+            raise FileNotFoundError("Blender Plugin is missing.")
+
+        plugins = sorted(plugins)
+        plugin_to_load = os.path.abspath(plugins[0])
+
+    except Exception as e:
+        app = QApplication(sys.argv)
+
+        error_dialog = QMessageBox()
+        error_dialog.setIcon(QMessageBox.Icon.Critical)
+        error_dialog.setWindowTitle("Error")
+        error_dialog.setText("An error occurred:")
+        error_dialog.setInformativeText(str(e))
+        error_dialog.exec()
+
+        sys.exit(1)
+
+    if not os.path.exists(plugin_to_load):
+        sys.exit(1)
+
     app = QApplication(sys.argv)
-    window = ModelProcessorGUI()
+    window = ModelProcessorGUI(plugin_to_load)
     window.show()
+
     sys.exit(app.exec())
