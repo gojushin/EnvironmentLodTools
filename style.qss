@@ -12,7 +12,7 @@ QWidget {
 
 /* GroupBox styling */
 QGroupBox {
-    border: 2px solid #a4c2a8;
+    border: 2px solid #db5e51;
     border-radius: 5px;
     margin-top: 1ex;
     font-weight: bold;
@@ -22,23 +22,23 @@ QGroupBox {
 QGroupBox::title {
     subcontrol-origin: margin;
     left: 10px;
-    color: #2a5033;
+    color: #a12b47;
 }
 
 /* Button styling */
 QPushButton {
-    background-color: #8db580;
+    background-color: #c43562;
     color: white;
     border-radius: 5px;
     padding: 5px;
 }
 
 QPushButton:hover {
-    background-color: #7da476;
+    background-color: #b22e56;
 }
 
 QPushButton:pressed {
-    background-color: #5d7a58;
+    background-color: #8f1f3e;
 }
 
 /* Line Edit styling */
@@ -57,12 +57,30 @@ QSpinBox, QDoubleSpinBox {
     background-color: #fff;
 }
 
+QSpinBox::up-button, QDoubleSpinBox::up-button {
+    width: 22px;
+    height: 18px;
+}
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    width: 22px;
+    height: 18px;
+}
+
 /* Combo Box styling */
 QComboBox {
     padding: 5px;
     border: 1px solid #ccc;
     border-radius: 3px;
     background-color: #fff;
+}
+
+QPlainTextEdit {
+	background-color: #1e1e1e;
+	color: #d4d4d4;
+	border: 1px solid #3e3e3e;
+	selection-background-color: #264f78;
+	font-family: "Consolas", "Courier New", monospace;
+	font-size: 8pt;
 }
 
 QCheckBox {
@@ -72,4 +90,13 @@ QCheckBox {
 QCheckBox::indicator {
     width: 16px;
     height: 16px;
+}
+
+/* Tooltip styling */
+QToolTip {
+    background-color: white;
+    color: #2e2e2e;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    padding: 5px;
 }
