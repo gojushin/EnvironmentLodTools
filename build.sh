@@ -57,7 +57,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Extract Python major.minor version
-PYTHON_VERSION_SHORT=$(echo $PYTHON_VERSION | cut -d. -f1,2)
+PYTHON_VERSION_SHORT=$(echo "$PYTHON_VERSION" | cut -d. -f1,2)
 
 echo "Using Python version: $PYTHON_VERSION"
 echo "Using Python short version: $PYTHON_VERSION_SHORT"
@@ -71,14 +71,14 @@ build_plugins() {
     mkdir -p ./plugin_src/wheels
     
     # Download pyfqmr wheels for different platforms
-    pip download pyfqmr==0.2.0 --dest ./plugin_src/wheels --only-binary=:all: --python-version=$PYTHON_VERSION_SHORT --platform=macosx_11_0_arm64
-    pip download pyfqmr==0.2.0 --dest ./plugin_src/wheels --only-binary=:all: --python-version=$PYTHON_VERSION_SHORT --platform=manylinux_2_17_x86_64
-    pip download pyfqmr==0.2.0 --dest ./plugin_src/wheels --only-binary=:all: --python-version=$PYTHON_VERSION_SHORT --platform=win_amd64
+    pip download pyfqmr==0.2.0 --dest ./plugin_src/wheels --only-binary=:all: --python-version="$PYTHON_VERSION_SHORT" --platform=macosx_11_0_arm64
+    pip download pyfqmr==0.2.0 --dest ./plugin_src/wheels --only-binary=:all: --python-version="$PYTHON_VERSION_SHORT" --platform=manylinux_2_17_x86_64
+    pip download pyfqmr==0.2.0 --dest ./plugin_src/wheels --only-binary=:all: --python-version="$PYTHON_VERSION_SHORT" --platform=win_amd64
     
     # Download xatlas wheels for different platforms
-    pip download xatlas==0.0.10 --dest ./plugin_src/wheels --only-binary=:all: --python-version=$PYTHON_VERSION_SHORT --platform=macosx_11_0_arm64
-    pip download xatlas==0.0.9 --dest ./plugin_src/wheels --only-binary=:all: --python-version=$PYTHON_VERSION_SHORT --platform=manylinux_2_17_x86_64
-    pip download xatlas==0.0.9 --dest ./plugin_src/wheels --only-binary=:all: --python-version=$PYTHON_VERSION_SHORT --platform=win_amd64
+    pip download xatlas==0.0.10 --dest ./plugin_src/wheels --only-binary=:all: --python-version="$PYTHON_VERSION_SHORT" --platform=macosx_11_0_arm64
+    pip download xatlas==0.0.9 --dest ./plugin_src/wheels --only-binary=:all: --python-version="$PYTHON_VERSION_SHORT" --platform=manylinux_2_17_x86_64
+    pip download xatlas==0.0.9 --dest ./plugin_src/wheels --only-binary=:all: --python-version="$PYTHON_VERSION_SHORT" --platform=win_amd64
     
     # Delete all entries with numpy (Blender already provides numpy 1.26.4)
     rm -f ./plugin_src/wheels/numpy*
@@ -167,7 +167,7 @@ build_launcher() {
         rm -rf "$BUILD_DIR"
     fi
     mkdir "$BUILD_DIR"
-    cd "$BUILD_DIR"
+    cd "$BUILD_DIR" || exit
     
     # Detect platform and set appropriate generator
     case "$(uname -s)" in
