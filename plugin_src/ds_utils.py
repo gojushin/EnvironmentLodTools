@@ -797,3 +797,6 @@ def decimate_object(mesh_data, target_ratio, iterations=5, vg_name=None, merge_t
     return mesh_data
 
 # endregion
+
+if __name__ == "__main__":
+    pass
