@@ -100,7 +100,6 @@ jobs:
           cp enviro_launcher.exe gui_package/
           cp enviro_tools_gui.py gui_package/
           cp plugin_src/ds_consts.py gui_package/plugin_src
-          cp plugin_src/ds_utils.py gui_package/plugin_src
           
           cp -r python_embed gui_package/ 
           

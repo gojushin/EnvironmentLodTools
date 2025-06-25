@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
 
 sys.path.insert(0, os.getcwd())
 
-from plugin_src.ds_utils import launch_operator_by_name
 from plugin_src.ds_consts  import COMB_IDNAME
 
 SCRIPT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__)))
@@ -602,6 +601,24 @@ class ModelProcessorGUI(QWidget):
 
         # Run the operators
         print("Launching Blender operators...")
+
+        def launch_operator_by_name(op_str):
+            """
+            Launches an operator by name.
+            :param op_str: The name of the operator.
+            :type op_str: str
+            :return: None
+            """
+            import bpy
+            try:
+                category, operator_name = op_str.split(".")
+                f = getattr(getattr(bpy.ops, category), operator_name)
+                f()
+            except AttributeError:
+                print(f"Error: Operator {op_str} does not exist.")
+            except RuntimeError as e:
+                print(f"Runtime Error: {e}")
+
         launch_operator_by_name(COMB_IDNAME)
 
         # Disable console capture
