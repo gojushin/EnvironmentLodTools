@@ -94,14 +94,15 @@ jobs:
         shell: bash
         run: |
           mkdir -p gui_package
-          mkdir -p gui_package/enviro_lod_tools/plugin_src
-          
+          mkdir -p gui_package/plugin_src
+
           cp style.qss gui_package/ 2>/dev/null || echo "style.qss not found, skipping"
-          cp plugin_src/ds_utils.py gui_package/plugin_src/
-          cp plugin_src/ds_consts.py gui_package/plugin_src/
           cp enviro_launcher.exe gui_package/
+          cp enviro_tools_gui.py gui_package/
+          cp plugin_src/ds_consts.py gui_package/plugin_src
+          cp plugin_src/ds_utils.py gui_package/plugin_src
           
-          cp -r python_embed gui_package/
+          cp -r python_embed gui_package/ 
           
           cp "$WINDOWS_PLUGIN_PATH" gui_package/
           echo "Included Windows plugin: $(basename $WINDOWS_PLUGIN_PATH)"
