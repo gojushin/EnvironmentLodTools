@@ -1,23 +1,6 @@
 """
 XAtlas Unwrapper Add-on for Blender
 This module implements an operator to unwrap UVs using xatlas in Blender.
-
-**Note on Multiprocessing Issue in Blender on Windows:**
-We encountered a problem when using multiprocessing in Blender on Windows.
-The issue arises because Blender's Python environment modifies `sys.path` when importing `bpy`,
-which interferes with the `multiprocessing` module's ability to spawn new processes that can correctly import modules.
-This leads to errors like:
-
-ModuleNotFoundError: No module named '_bpy'
-
-The child processes spawned by `multiprocessing` try to re-import the main module, but due to the modified `sys.path`,
-they fail to find the necessary Blender modules.
-To mitigate this issue, we manipulate `sys.path` before creating the multiprocessing pool,
-ensuring that child processes inherit a clean `sys.path` without Blender-specific paths.
-This allows the subprocesses to import the required modules without interference!
-For more details on this issue and the workaround, please refer to the following discussion:
-
-https://github.com/TylerGubala/blenderpy/issues/23
 """
 
 import os
@@ -28,12 +11,14 @@ import bpy
 import bmesh
 
 from .ds_consts import UNWRAP_IDNAME, UNWRAP_LABEL, UNWRAP_PANEL_LABEL, UNWRAP_PANEL_IDNAME
-from .ds_xatlas_worker import test_xatlas_viability, unwrap_multi, unwrap_single
+from .ds_xatlas_worker import test_xatlas_mp_viability, unwrap_multi, unwrap_single
+
+BLENDER_BIN_PATH = bpy.app.binary_path # None if running as module.
 
 bl_info = {
     "name": "XAtlas Unwrapper",
     "author": "Nico Breycha",
-    "version": (0, 0, 6),
+    "version": (0, 1, 1),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Unwraps the model using xatlas.",
@@ -100,19 +85,22 @@ class MESH_OT_unwrap_xatlas(bpy.types.Operator):
             return {"CANCELLED"}
 
         # Determine multiprocessing viability.
-        mp_is_viable = test_xatlas_viability(xatlas_path)
+        mp_is_viable = test_xatlas_mp_viability(xatlas_path, BLENDER_BIN_PATH)
         results = []
+        used_single_processing = False
 
         if mp_is_viable:
             # Multiprocessing
             try:
-                results = unwrap_multi(mesh_data_list, xatlas_path, context)
+                results = unwrap_multi(mesh_data_list, xatlas_path, context, BLENDER_BIN_PATH)
             except Exception as e:
                 # Fallback to single processing if multiprocessing fails
                 messages.append(f"Multiprocessing failed ({str(e)}), falling back to single processing")
                 results = unwrap_single(mesh_data_list, context)
+                used_single_processing = True
         else:
             results = unwrap_single(mesh_data_list, context)
+            used_single_processing = True
 
         # Apply resulting UVs
         for result in results:
@@ -160,7 +148,9 @@ class MESH_OT_unwrap_xatlas(bpy.types.Operator):
 
         context.window_manager.progress_end()
         total_processed = total_meshes - cnt_fail
-        messages.append(f"UVs generated successfully for {total_processed} meshes. {cnt_fail} objects skipped.")
+
+        messages.append(f"UVs generated successfully for {total_processed} meshes. {cnt_fail} objects skipped. "
+                        f"Used {'single processing' if used_single_processing else 'multi processing'}.")
 
         for msg in messages:
             self.report({"INFO"}, msg)
