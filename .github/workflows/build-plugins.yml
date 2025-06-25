@@ -33,6 +33,16 @@ jobs:
           echo "TAG=$TAG" >> $GITHUB_OUTPUT
           echo "Detected tag: $TAG"
 
+      - name: Save tag info
+        run: echo "${{ steps.get_tag.outputs.TAG }}" > tag.txt
+
+      - name: Upload tag info
+        uses: actions/upload-artifact@v4
+        with:
+          name: tag-info
+          path: tag.txt
+          retention-days: 1
+
       - name: Install Blender
         run: |
           # Download and install Blender 4.4
