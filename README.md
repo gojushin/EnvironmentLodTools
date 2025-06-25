@@ -7,21 +7,22 @@
   <img width="256" height="256" src="https://raw.githubusercontent.com/gojushin/EnvironmentLodTools/main/docs/resources/icon.svg" alt="Logo">
 </p>
 
-This is a collection of plugins for [Blender](https://www.blender.org/) (v. 4.2.0 and above).
+Environment LOD Tools are a collection of plugins for [Blender](https://www.blender.org/) (v. 4.2.0 and above).
 The plugins are designed to help with the creation of environment levels of detail (LODs) for terrestrial photogrammetry models.
 (Models of Landscapes, Cities, and other "flat" structures).
 
-<p align="center">
-  <img width="960" height="410" src="https://raw.githubusercontent.com/gojushin/EnvironmentLodTools/main/docs/resources/enviro_lod_tools_example.jpg" alt="LOD Example logo">
-</p>
-
-The tool is split into several single plugins, that can be used independently of each other.
+The tools are split into several single plugins, that can be used independently of each other.
 There is also a combined plugin that can load a model from the file system and generate LODs for it, without actively rendering it to the viewport.
 **This is essential for source files that are too massive to display in the viewport.**
 
 **Blender Plugins** are available for `Windows`, `Linux` and `Mac (experimental)`.
- 
-For Windows there is also a self-contained, zero-config GUI application available.
+
+> [!NOTE]  
+> For Windows there is also a self-contained, zero-config GUI application available.
+
+<p align="center">
+  <img width="960" height="410" src="https://raw.githubusercontent.com/gojushin/EnvironmentLodTools/main/docs/resources/enviro_lod_tools_example.jpg" alt="LOD Example logo">
+</p>
 
 ### Features
 
@@ -43,7 +44,7 @@ For Windows there is also a self-contained, zero-config GUI application availabl
 # Installation
 
 <p align="start">
-    <img width="509" height="475" src="https://raw.githubusercontent.com/gojushin/EnvironmentLodTools/main/docs/resources/enviro_lod_tools_gui_example.jpg" alt="GUI Example">
+    <img width="509" height="475" src="https://raw.githubusercontent.com/gojushin/EnvironmentLodTools/main/docs/resources/enviro_lod_tools_gui_example.png" alt="GUI Example">
 </p>
 
 ## GUI
@@ -143,8 +144,7 @@ To install the plugins, follow these steps:
 #### The UI freezes once "Start" is pressed in the GUI
 
 This behavior occurs because, in Python, two event loops cannot run concurrently in the same thread. This limitation stems from the environment in which the application is currently executed. I plan to address this in a future update by running the two event loops of PySide and Blender-as-a-module in separate threads and connecting them via IPC.
-
-Do not worry though, since even if the GUI freezes, the processing will still take place. As a workaround for now, I instead made the console visible.
+Do not worry though, even if the GUI freezes, the processing will still take place.
 
 ### Contributing
 
