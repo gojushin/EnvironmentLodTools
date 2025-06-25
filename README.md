@@ -138,6 +138,14 @@ To install the plugins, follow these steps:
       └── 📄 ...
   ```
 
+### Known Issues
+
+#### The UI freezes once "Start" is pressed in the GUI
+
+This behavior occurs because, in Python, two event loops cannot run concurrently in the same thread. This limitation stems from the environment in which the application is currently executed. I plan to address this in a future update by running the two event loops of PySide and Blender-as-a-module in separate threads and connecting them via IPC.
+
+Do not worry though, since even if the GUI freezes, the processing will still take place. As a workaround for now, I instead made the console visible.
+
 ### Contributing
 
 Contributions are welcome! If you find any bugs or have suggestions for improvements, please open an issue or submit a pull request.
