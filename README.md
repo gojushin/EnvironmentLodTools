@@ -1,11 +1,11 @@
-# Environment LOD Tools
+<img width="128" height="128" src="https://raw.githubusercontent.com/gojushin/EnvironmentLodTools/main/docs/resources/icon.svg" alt="Logo">
 
+-----------
 [![Blender Plugins](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/build-plugins.yml/badge.svg)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/build-plugins.yml)
 [![Standalone](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/build-release.yml/badge.svg)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/build-release.yml)
 
-<p align="center">
-  <img width="256" height="256" src="https://raw.githubusercontent.com/gojushin/EnvironmentLodTools/main/docs/resources/icon.svg" alt="Logo">
-</p>
+# Environment LOD Tools
+
 
 Environment LOD Tools are a collection of plugins for [Blender](https://www.blender.org/) (v. 4.2.0 and above).
 The plugins are designed to help with the creation of environment levels of detail (LODs) for terrestrial photogrammetry models.
@@ -40,12 +40,11 @@ There is also a combined plugin that can load a model from the file system and g
 
 - **Baker**: Transfers the base color of a defined mesh onto one or multiple selected meshes. Blender is used as the baking framework.
 
+<p align="start">
+    <img width="536" height="347" src="https://raw.githubusercontent.com/gojushin/EnvironmentLodTools/main/docs/resources/enviro_lod_tools_gui_example.png" alt="GUI Example">
+</p>
 
 # Installation
-
-<p align="start">
-    <img width="509" height="475" src="https://raw.githubusercontent.com/gojushin/EnvironmentLodTools/main/docs/resources/enviro_lod_tools_gui_example.png" alt="GUI Example">
-</p>
 
 ## GUI
 EnvironmentLodTools can also be used with a "standalone" PySide6 based GUI.
@@ -64,9 +63,9 @@ To install the plugins, follow these steps:
 4. Enable the plugins by checking the plugins checkbox.
 5. Once installed, the plugins can be accessed through the `Tool` and `Tools` panel.
 
-### Building 
+# Building 
 
-#### Using the provided scripts
+## Using the provided scripts
 
 - Run `build.sh` using a applicable shell (i.e. GitShell, MinGW64, MSYS2, etc...)
 > [!NOTE]  
@@ -76,7 +75,7 @@ To install the plugins, follow these steps:
 > 
 > `--python-version` (which lets you define the python version for building. i.e.: `3.11.9`)
 
-#### Building from scratch
+## Building from scratch
 
 - Download the correct wheels [pyfqmr](https://pypi.org/project/pyfqmr/#files) and [xatlas](https://pypi.org/project/xatlas/#files) for your correct platform and python version an place them in `.plugin_src/wheels`
 - Add the path(s) to the wheels to the blender manifest at `.plugin_src/blender_manifest.toml`
@@ -139,22 +138,22 @@ To install the plugins, follow these steps:
       └── 📄 ...
   ```
 
-### Known Issues
+# Known Issues
 
-#### The UI freezes once "Start" is pressed in the GUI
+## The UI freezes once "Start" is pressed in the GUI
 
 This behavior occurs because, in Python, two event loops cannot run concurrently in the same thread. This limitation stems from the environment in which the application is currently executed. I plan to address this in a future update by running the two event loops of PySide and Blender-as-a-module in separate threads and connecting them via IPC.
 Do not worry though, even if the GUI freezes, the processing will still take place.
 
-### Contributing
+# Contributing
 
 Contributions are welcome! If you find any bugs or have suggestions for improvements, please open an issue or submit a pull request.
 
-### License
+# License
 
 The code is licensed under the [GPLv3 License](LICENSE).
 
-### Credits
+# Credits
 
 This project was originally created by [Nico Breycha](https://github.com/gojushin) ([High Vision](https://high-vision.de)) for the [Deine Stadt](https://deinestadt.science/) project.
 
@@ -172,6 +171,6 @@ This project was originally created by [Nico Breycha](https://github.com/gojushi
 
 - [Pyside6](https://pypi.org/project/PySide6/), licensed under the [LGPLv3/GPLv3](https://github.com/pyside6/pyside6/blob/master/LICENSE)
 
-### Older Versions
+# Older Versions
 
 As of June 2025 I no longer support Blender Versions 4.1 and below. The latest release for these versions can be found [here](https://github.com/gojushin/EnvironmentLodTools/releases/tag/0.0.55-pre).
