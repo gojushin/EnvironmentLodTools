@@ -27,7 +27,7 @@ int main() {
         NULL,                           // Process security attributes
         NULL,                           // Thread security attributes
         FALSE,                          // Inherit handles
-        0,                              // Creation flags
+        CREATE_NEW_CONSOLE,             // Creation flags
         NULL,                           // Environment block
         exeDir.c_str(),                 // Working directory (where the script is)
         &si,                            // STARTUPINFO
