@@ -78,6 +78,17 @@ jobs:
         run: |
           ./build.sh build_launcher
 
+      - name: Copy required DLLs to output folder
+        shell: bash
+        run: |
+          mkdir -p dlls
+          ldd enviro_launcher.exe | grep '=>' | awk '{print $3}' | while read -r DLL; do
+            if [[ -f "$DLL" && "$DLL" != /c/Windows/* ]]; then
+              cp "$DLL" dlls/
+            fi
+          done
+          cp dlls/*.dll . || echo "No DLLs copied"
+
       - name: Get tag name from triggering workflow
         id: get_tag_release
         shell: bash
@@ -98,6 +109,8 @@ jobs:
 
           cp style.qss gui_package/ 2>/dev/null || echo "style.qss not found, skipping"
           cp enviro_launcher.exe gui_package/
+          cp dlls/*.dll gui_package/ 2>/dev/null || echo "No DLLs found in dlls/ to copy"
+          
           cp enviro_tools_gui.py gui_package/
           cp plugin_src/ds_consts.py gui_package/plugin_src
           
