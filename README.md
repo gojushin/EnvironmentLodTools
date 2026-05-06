@@ -4,6 +4,10 @@
 [![Blender Plugins](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/build-plugins.yml/badge.svg)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/build-plugins.yml)
 [![Standalone](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/build-release.yml/badge.svg)](https://github.com/gojushin/EnvironmentLodTools/actions/workflows/build-release.yml)
 
+# Archive
+
+As the project this repo is connected to comes to an end, this repo here will no longer be under continued developement.
+
 # Environment LOD Tools
 
 
@@ -142,12 +146,8 @@ To install the plugins, follow these steps:
 
 ## The UI freezes once "Start" is pressed in the GUI
 
-This behavior occurs because, in Python, two event loops cannot run concurrently in the same thread. This limitation stems from the environment in which the application is currently executed. I plan to address this in a future update by running the two event loops of PySide and Blender-as-a-module in separate threads and connecting them via IPC.
+This behavior occurs because, in Python, two event loops cannot run concurrently in the same thread. This limitation stems from the environment in which the application is currently executed.
 Do not worry though, even if the GUI freezes, the processing will still take place.
-
-# Contributing
-
-Contributions are welcome! If you find any bugs or have suggestions for improvements, please open an issue or submit a pull request.
 
 # License
 
